@@ -4,6 +4,10 @@ An early implementation of the QTI 3.0 standard for Python.
 
 The first goal is going to be to get simple multiple choice problems to render.
 
+## High Level Approach
+
+Web components for the qti-item-body, Python backend for everything else.
+
 ## Auto-generated Models
 
 **DO NOT MANUALLY EDIT THE MODELS IN pyqti.models!** The models were automatically generated using [`xsdata`](https://xsdata.readthedocs.io/en/latest/), specifically using the invocation:
@@ -14,6 +18,6 @@ The source XSD file came from the [QTI 3.0 Specification Documents](https://www.
 
 I did look at [`xsdata-pydantic`](https://xsdata-pydantic.readthedocs.io/en/latest/), but the generated Pydantic models used a prohibitively large amount of memory during the parsing process for a small adaptive assessment item example (1.5 MB for the dataclasses version vs. 270 MB for the Pydantic models). My guess is that this is a memory leak bug somewhere rather than being something intrinsic to Pydantic, but I didn't want to try to track it down.
 
-We also intentionally don't use the optional lxml bindings, because the speedups aren't worth the memory overhead (about 18 MB for that same example data).
+I also intentionally don't use the optional lxml bindings, because the speedups aren't worth the memory overhead (about 18 MB for that same example data).
 
-The total memory usage for the auto-generated dataclass models is around 38 MB. This includes a lot of W3C related models that are referenced by the QTI spec and are necessary for full validation (e.g. MathML).
+The total memory usage for the auto-generated dataclass models is around 38 MB. This includes a lot of W3C related models that are referenced by the QTI spec and are necessary for full validation (e.g. MathML). If further memory optimization is necessary, we might be able to relax the parsing rules and model generation around these, though I don't think that's good tradeoff overall.

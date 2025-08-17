@@ -7,8 +7,10 @@ for var, val in XmlSerializer.next_value(item.qti_item_body, meta):
 import argparse
 import code
 import resource
+import xml.etree.ElementTree as ET
 from io import StringIO
 
+from xsdata.formats.dataclass.context import XmlContext
 from xsdata.formats.dataclass.parsers import XmlParser
 from xsdata.formats.dataclass.serializers import XmlSerializer
 from xsdata.formats.dataclass.serializers.config import SerializerConfig
@@ -28,8 +30,91 @@ def render_to_text(qti_assessment_item: QtiAssessmentItem):
     buffer.write(qti_assessment_item.title)
     return buffer.getvalue()
 
-def render_to_html(qti_assessment_item: QtiAssessmentItem):
-    return "Pretend I'm legit HTML output"
+def render_to_html_old(item: QtiAssessmentItem, header_level=2):
+    buffer = StringIO()
+    title_header = f"h{header_level}"
+    buffer.write(f"<{title_header}>{item.title}</{title_header}>\n")
+
+    context = XmlContext()
+    meta = context.fetch(item.qti_item_body.__class__)
+
+    val = XmlSerializer.next_value(item.qti_item_body, meta)
+    #for x in val:
+    #    buffer.write(str(x) + "\n")
+
+    #n = 0
+    #for var, val in XmlSerializer.next_value(item.qti_item_body, meta):
+    #    # buffer.write(str(var))
+    #    buffer.write(f"\nn = {n}:\n")
+    #    buffer.write(str(val))
+
+    return buffer.getvalue()
+
+
+def render_to_html(item: QtiAssessmentItem, header_level=2):
+    serializer_config = SerializerConfig(
+        indent="  ",
+        ignore_default_attributes=True,
+    )
+    serializer = XmlSerializer(config=serializer_config)
+    xml_text = serializer.render(
+        item.qti_item_body,
+#        ns_map={None: "http://www.imsglobal.org/xsd/imsqtiasi_v3p0"}
+    )
+    return xml_text
+
+
+def render_to_html(item: QtiAssessmentItem, header_level=2):
+    xml_text = render_to_xml(item)
+    lines = xml_text.split('\n')
+    new_xml_text = '<?xml version="1.0" encoding="UTF-8"?>\n<qti-assessment-item>\n' + "\n".join(lines[2:])
+
+    print(new_xml_text)
+
+    tree = ET.fromstring(new_xml_text)
+    # breakpoint()
+    item_body_el = tree.find("qti-item-body")
+    return ET.tostring(
+        item_body_el,
+        encoding="unicode",
+        method="html",
+        default_namespace="",
+    )
+
+
+    buffer = StringIO()
+    title_header = f"h{header_level}"
+    buffer.write(f"<{title_header}>{item.title}</{title_header}>\n")
+
+    context = XmlContext()
+    meta = context.fetch(item.qti_item_body.__class__)
+
+    val = XmlSerializer.next_value(item.qti_item_body, meta)
+    #for x in val:
+    #    buffer.write(str(x) + "\n")
+
+    #n = 0
+    #for var, val in XmlSerializer.next_value(item.qti_item_body, meta):
+    #    # buffer.write(str(var))
+    #    buffer.write(f"\nn = {n}:\n")
+    #    buffer.write(str(val))
+
+    return buffer.getvalue()
+
+
+def render_to_xml(item):
+    # This currently only does the right thing for QtiAssessmentItem
+    serializer_config = SerializerConfig(
+        indent="  ",
+        ignore_default_attributes=True,
+    )
+    serializer = XmlSerializer(config=serializer_config)
+    xml_text = serializer.render(
+        item,
+        ns_map={None: "http://www.imsglobal.org/xsd/imsqtiasi_v3p0"}
+    )
+    return xml_text
+
 
 def render_to_xml(model):
     # This currently only does the right thing for QtiAssessmentItem
@@ -43,6 +128,7 @@ def render_to_xml(model):
         ns_map={None: "http://www.imsglobal.org/xsd/imsqtiasi_v3p0"}
     )
     return xml_text
+
 
 def main():
     parser = argparse.ArgumentParser(

@@ -3,6 +3,9 @@
 Example taken from "1EdTech Question & Test Interoperability (QTI) 3.0 Beginner's Guide"
 
 https://www.imsglobal.org/spec/qti/v3p0/guide#h.tihki9ei5lil
+
+It has been modified slightly to add this notice and to add a little extra HTML
+to the qti-item-body.
 -->
 <qti-assessment-item
  xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
@@ -24,7 +27,8 @@ https://www.imsglobal.org/spec/qti/v3p0/guide#h.tihki9ei5lil
   </qti-default-value>
  </qti-outcome-declaration>
  <qti-item-body>
-  <p>Of the following hormones, which is produced by the adrenal glands?</p>
+  <p>Of the following hormones, which is produced by the <em>adrenal glands?</em></p>
+  <p>This is another paragraph just to make sure I'm not going <strong>crazy</strong>.</p>
   <qti-choice-interaction max-choices="1" min-choices="1" response-identifier="RESPONSE">
    <qti-simple-choice identifier="A">Epinephrine</qti-simple-choice>
    <qti-simple-choice identifier="B">Glucagon</qti-simple-choice>
