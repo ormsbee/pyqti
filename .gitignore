@@ -6,11 +6,5 @@ dist/
 wheels/
 *.egg-info
 
-# MacOS
-.DS_Store
-
 # Virtual environments
 .venv
-
-# ruff for formatting
-.ruff_cache

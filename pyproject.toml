@@ -1,15 +1,25 @@
 [project]
 name = "pyqti"
 version = "0.1.0"
-description = "Python implementation of QTI 3.0"
+description = "WIP Python implementation of QTI 3.0"
 readme = "README.md"
-requires-python = ">=3.11"
-dependencies = [
-#    "xsdata[cli]>=24.11",
-    "xsdata>=24.11",
+authors = [
+    { name = "David Ormsbee", email = "dave@axim.org" }
 ]
+requires-python = ">=3.13"
+dependencies = [
+    "xsdata>=26.2",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
-    "ruff>=0.8.3",
+    "ruff>=0.15.14",
+    "xsdata[cli]>=26.2",
 ]
+
+[project.scripts]
+overhead = "pyqti.scripts.overhead:main"
