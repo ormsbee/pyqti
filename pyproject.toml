@@ -8,9 +8,10 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    # Upper bound is deliberate: pyqti depends on xsdata internals that are not
-    # part of its documented public API (XmlContext.build, XmlMeta, XmlVar.elements,
-    # and serializers.mixins.EventGenerator). See src/pyqti/_xsdata.py.
+    # Upper bound is deliberate: pyqti depends on xsdata internals that are not part
+    # of its documented public API -- XmlContext.build, XmlMeta and XmlVar.elements,
+    # used by src/pyqti/qtitree.py to recover QTI element names, plus AnyElement's
+    # mixed-content tail representation. See src/pyqti/_xsdata.py.
     "xsdata>=26.2,<27",
 ]
 

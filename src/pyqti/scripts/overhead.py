@@ -12,7 +12,6 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-QTI_NAMESPACE = "http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
 DEFAULT_EXAMPLE = Path(__file__).resolve().parents[3] / "examples" / "firstexample.xml"
 
 
@@ -47,14 +46,11 @@ def main():
     print(f"After parsing:                   {get_mem_usage()}")
     print(f"Parse time:                      {after - before}")
 
-    from xsdata.formats.dataclass.serializers import XmlSerializer
-    from xsdata.formats.dataclass.serializers.config import SerializerConfig
+    # Imported here, not at module scope, so the readings above stay honest.
+    from pyqti.serialization import to_qti_xml
 
-    serializer = XmlSerializer(
-        config=SerializerConfig(indent="  ", ignore_default_attributes=True)
-    )
     print()
-    print(serializer.render(assessment_item, ns_map={None: QTI_NAMESPACE}))
+    print(to_qti_xml(assessment_item, indent="  "))
 
 
 if __name__ == "__main__":

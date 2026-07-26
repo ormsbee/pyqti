@@ -1,18 +1,25 @@
 """pyqti --- an early implementation of the QTI 3.0 standard for Python.
 
-Currently supports rendering and grading single-answer multiple-choice items:
+Currently supports delivering and grading single-answer multiple-choice items:
 a ``qti-choice-interaction`` with ``cardinality="single"`` bound to an ``identifier``
 response, graded by real response processing (including resolution of the built-in
 ``match_correct`` template).
 
+pyqti does not render. Presentation is delegated to QTI web components in the browser
+(such as `Citolab qti-components <https://github.com/Citolab/qti-components>`_), which
+consume QTI XML directly. pyqti's job on that side is to publish a **presentation-safe**
+copy of the item --- see :func:`pyqti.redaction.presentation_xml` --- while keeping the
+authoritative item, with its correct responses and response processing, server-side.
+
 Typical use::
 
     from pathlib import Path
-    from pyqti import ItemSession, load_assessment_item, render_item_body_html
+    from pyqti import ItemSession, load_assessment_item, presentation_xml
 
-    session = ItemSession(load_assessment_item(Path("item.xml")))
-    html = render_item_body_html(session.item.item_body)
-    outcomes = session.submit({"RESPONSE": "A"})   # -> {"SCORE": 1.0}
+    item = load_assessment_item(Path("item.xml"))
+
+    xml = presentation_xml(item)                    # safe to send to a browser
+    outcomes = ItemSession(item).submit({"RESPONSE": "A"})   # -> {"SCORE": 1.0}
 
 Anything QTI defines that pyqti does not implement raises a subclass of
 :class:`~pyqti.errors.UnsupportedQtiFeature` rather than being silently ignored ---
@@ -55,7 +62,11 @@ if TYPE_CHECKING:  # pragma: no cover
         load_assessment_item,
         load_response_processing,
     )
-    from pyqti.render.html import render_item_body_html  # noqa: F401
+    from pyqti.redaction import (  # noqa: F401
+        presentation_xml,
+        redact_for_delivery,
+    )
+    from pyqti.serialization import to_qti_xml  # noqa: F401
     from pyqti.session import ItemSession, ResponseValidity, grade  # noqa: F401
     from pyqti.values import BaseType, Cardinality  # noqa: F401
 
@@ -79,7 +90,9 @@ _EXPORTS: dict[str, str] = {
     "grade": "pyqti.session",
     "load_assessment_item": "pyqti.loading",
     "load_response_processing": "pyqti.loading",
-    "render_item_body_html": "pyqti.render.html",
+    "presentation_xml": "pyqti.redaction",
+    "redact_for_delivery": "pyqti.redaction",
+    "to_qti_xml": "pyqti.serialization",
 }
 
 __all__ = sorted(_EXPORTS)

@@ -34,12 +34,13 @@ an expression field and ``qti-exit-response`` in ``ResponseProcessingDtype.choic
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import is_dataclass
 from functools import cache
 from typing import Any
 
 from xsdata.formats.dataclass.models.elements import XmlMeta, XmlVar
-from xsdata.formats.dataclass.models.generics import DerivedElement
+from xsdata.formats.dataclass.models.generics import AnyElement, DerivedElement
 from xsdata.utils.namespaces import split_qname
 
 from pyqti._xsdata import CONTEXT
@@ -225,3 +226,95 @@ def first_child(obj: Any, name: str) -> Any | None:
 def children_named(obj: Any, name: str) -> list[Any]:
     """Return every child of ``obj`` named ``name``."""
     return [child for child_name, child in iter_children(obj) if child_name == name]
+
+
+def _rescued_tail(node: Any) -> str | None:
+    """Text that followed ``node`` but was absorbed into ``node`` by the parser.
+
+    xsdata represents mixed-content tails two ways. Usually the tail is a separate
+    string in the parent's list --- ``['before ', Em(...), ' after']``. But when the
+    element's own model has a wildcard field, the parser puts the tail *inside* the
+    element instead: ``<p>a <qti-printed-variable/> b</p>`` parses to
+    ``['a ', PrintedVariableDtype(any_element=AnyElement(tail=' b'))]``. Deleting that
+    element would silently take ``' b'`` with it and corrupt candidate-visible prose.
+
+    The tail is only rescued when the node carries no content of its own (no text, no
+    children). That guard is the whole point: it recovers the tail of an empty inline
+    element, and can never resurface prose from *inside* a removed element --- which
+    for a ``qti-feedback-block`` would leak the very text we are stripping.
+    """
+    candidates: list[AnyElement] = [node] if isinstance(node, AnyElement) else []
+
+    if is_dataclass(node):
+        for var in meta_for(type(node)).get_all_vars():
+            if not var.is_wildcard:
+                continue
+            value = getattr(node, var.name, None)
+            for item in value if isinstance(value, list) else [value]:
+                if isinstance(item, AnyElement):
+                    candidates.append(item)
+
+    for element in candidates:
+        if element.tail and not element.text and not element.children:
+            return element.tail
+    return None
+
+
+def prune(obj: Any, should_remove: Callable[[str, Any], bool]) -> int:
+    """Recursively delete children of ``obj`` for which ``should_remove`` is true.
+
+    Mutates ``obj`` in place and returns how many elements were removed. Text runs
+    inside mixed content are always preserved --- removing an element must not
+    silently swallow the prose around it.
+
+    This lives here rather than in :mod:`pyqti.redaction` because removing a child
+    means mutating whichever compound or wildcard field holds it, and knowing which
+    field that is (and what the child is called) is exactly this module's job.
+    """
+    removed = 0
+
+    for var in meta_for(type(obj)).get_all_vars():
+        if not _is_child_var(var):
+            continue
+
+        value = getattr(obj, var.name, None)
+        if value is None:
+            continue
+
+        reverse = _reverse_map(var) if var.elements else {}
+        fallback = var.local_name if var.is_element else None
+
+        if isinstance(value, list):
+            kept: list[Any] = []
+            for child in value:
+                if isinstance(child, str):
+                    kept.append(child)  # text run
+                    continue
+                inner = _unwrap(child)
+                if should_remove(_resolve_name(child, reverse, fallback), inner):
+                    removed += 1
+                    tail = _rescued_tail(inner)
+                    if tail:
+                        # Merge into the preceding text run rather than appending a
+                        # second one. xsdata serializes consecutive strings in mixed
+                        # content as text-then-*tail*, so ['nested ', ' here'] would
+                        # emit "<p>nested </p> here" and move the text outside the
+                        # element it belongs to.
+                        if kept and isinstance(kept[-1], str):
+                            kept[-1] += tail
+                        else:
+                            kept.append(tail)
+                    continue
+                if is_dataclass(inner):
+                    removed += prune(inner, should_remove)
+                kept.append(child)
+            value[:] = kept
+        elif not isinstance(value, str):
+            inner = _unwrap(value)
+            if should_remove(_resolve_name(value, reverse, fallback), inner):
+                setattr(obj, var.name, None)
+                removed += 1
+            elif is_dataclass(inner):
+                removed += prune(inner, should_remove)
+
+    return removed
