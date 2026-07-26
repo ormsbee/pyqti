@@ -1,36 +1,4 @@
 /* Just enough styling to make the demo legible. */
-
-:root {
-  color-scheme: light dark;
-  --fg: #1a1a1a;
-  --bg: #fdfdfc;
-  --muted: #6b6b6b;
-  --line: #d8d8d4;
-  --accent: #2d5f8a;
-  --ok-bg: #e6f4ea;
-  --ok-fg: #14532d;
-  --warn-bg: #fdf3d7;
-  --warn-fg: #6b4b00;
-  --err-bg: #fdeaea;
-  --err-fg: #7f1d1d;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --fg: #e8e8e6;
-    --bg: #1b1b1a;
-    --muted: #a0a09c;
-    --line: #3a3a38;
-    --accent: #8ab4d8;
-    --ok-bg: #14311f;
-    --ok-fg: #b7e4c7;
-    --warn-bg: #3a2f10;
-    --warn-fg: #f2d98c;
-    --err-bg: #3a1717;
-    --err-fg: #f5b5b5;
-  }
-}
-
 body {
   margin: 0;
   background: var(--bg);

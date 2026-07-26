@@ -29,9 +29,11 @@ import copy
 from dataclasses import fields
 from typing import Any
 
+from xsdata.formats.dataclass.models.generics import AnyElement
+
 from pyqti.errors import UnsupportedContentError
 from pyqti.models.org.imsglobal.xsd.imsqtiasi_v3p0 import QtiAssessmentItem
-from pyqti.qtitree import prune
+from pyqti.qtitree import attribute_vars, iter_nodes, prune
 from pyqti.serialization import to_qti_xml
 
 #: Item fields that are safe to publish untouched.
@@ -104,6 +106,9 @@ REDACT_ON_RESPONSE: tuple[str, ...] = (
 #: Feedback is conditional on outcome values and therefore answer-revealing.
 #: Template blocks are conditional on template variables, which determine the answer
 #: for randomised items. ``qti-printed-variable`` prints a variable's value directly.
+#: ``qti-stylesheet`` is stripped *here as well as* at item level, because
+#: ``qti-rubric-block`` can carry its own and rubric blocks survive redaction --- CSS
+#: can single out the correct choice, and it is an out-of-band fetch mid-exam.
 STRIP_FROM_BODY: frozenset[str] = frozenset(
     {
         "qti-feedback-block",
@@ -111,13 +116,70 @@ STRIP_FROM_BODY: frozenset[str] = frozenset(
         "qti-template-block",
         "qti-template-inline",
         "qti-printed-variable",
+        "qti-stylesheet",
     }
 )
 
-#: ``qti-rubric-block`` is only published when it is addressed to the candidate.
-#: Any other ``view`` (``scorer``, ``author``, ``proctor``, ``tutor``) is by
-#: definition not for them.
+#: ``qti-rubric-block`` is published only when it is addressed to the candidate *and*
+#: is not the marking scheme.
+#:
+#: Both halves are required. ``use="scoring"`` **is** the mark scheme, so checking
+#: ``view`` alone publishes it whenever the author also tagged it for the candidate.
+#: And ``view`` is a token *list*: testing ``"candidate" in view`` keeps
+#: ``view="candidate scorer"``, which is a denylist wearing an allowlist's clothes.
+#: Equality is the point.
 CANDIDATE_VIEW = "candidate"
+CANDIDATE_RUBRIC_USE = "instructions"
+
+#: Attributes cleared on every node. All are author annotations with no candidate-
+#: facing function, and all are free text an answer can hide in --- ``label="KEY"``,
+#: ``style`` visually marking the correct choice, ``xref`` pointing at a mark scheme.
+CLEAR_ATTRIBUTES: frozenset[str] = frozenset({"label", "style", "xref"})
+
+#: ``class`` tokens that survive. Everything else is dropped.
+#:
+#: ``class`` cannot simply be cleared --- it is how QTI 3.0 authors select presentation
+#: from the specification's *shared vocabulary* (label numbering, choice stacking,
+#: input widths). But it also cannot be published as authored, because
+#: ``class="correct-answer"`` is self-documenting and it is the join key for the
+#: stylesheet vector.
+#:
+#: This set is deliberately conservative: it holds the shared-vocabulary tokens we are
+#: confident about, and an unrecognised token is dropped rather than published. Widen
+#: it when a fixture needs a token, never speculatively --- the same discipline
+#: ``examples/choice-rich-body.xml`` documents for element support.
+ALLOWED_CLASS_TOKENS: frozenset[str] = frozenset(
+    {
+        # choice label numbering and suffixes
+        "qti-labels-none",
+        "qti-labels-decimal",
+        "qti-labels-lower-alpha",
+        "qti-labels-upper-alpha",
+        "qti-labels-cjk-ideographic",
+        "qti-labels-suffix-none",
+        "qti-labels-suffix-period",
+        "qti-labels-suffix-parenthesis",
+        # layout
+        "qti-orientation-horizontal",
+        "qti-orientation-vertical",
+        "qti-choices-stacking-1",
+        "qti-choices-stacking-2",
+        "qti-choices-stacking-3",
+        "qti-choices-stacking-4",
+        "qti-choices-stacking-5",
+        # alignment
+        "qti-align-left",
+        "qti-align-center",
+        "qti-align-right",
+        "qti-valign-top",
+        "qti-valign-middle",
+        "qti-valign-bottom",
+        # misc presentation
+        "qti-fullwidth",
+        "qti-underline",
+        "qti-well",
+    }
+)
 
 
 def _empty_for(current: Any) -> Any:
@@ -128,16 +190,55 @@ def _empty_for(current: Any) -> Any:
     return None
 
 
+def _tokens(raw: Any) -> set[str]:
+    """Normalise a QTI token-list attribute to a set of plain strings."""
+    if raw is None:
+        return set()
+    values = raw if isinstance(raw, list | tuple | set) else [raw]
+    return {str(getattr(value, "value", value)) for value in values}
+
+
 def _should_strip_from_body(name: str, node: Any) -> bool:
     if name in STRIP_FROM_BODY:
         return True
+
+    # Anything the parser could not map to a known QTI type lands as an AnyElement:
+    # a foreign-namespace element, or unrecognised markup absorbed by a wildcard.
+    # It is by definition uninspectable, so it cannot be published.
+    if isinstance(node, AnyElement):
+        return True
+
     if name == "qti-rubric-block":
-        # ``view`` is a token list in the schema, but tolerate a bare value so a
-        # model regeneration cannot turn this control off by changing its shape.
-        raw = getattr(node, "view", None) or []
-        views = raw if isinstance(raw, list | tuple | set) else [raw]
-        return CANDIDATE_VIEW not in {getattr(v, "value", v) for v in views}
+        views = _tokens(getattr(node, "view", None))
+        use = getattr(node, "use", None)
+        use_value = str(getattr(use, "value", use)) if use is not None else None
+        return views != {CANDIDATE_VIEW} or use_value != CANDIDATE_RUBRIC_USE
+
     return False
+
+
+def _scrub_attributes(root: Any) -> None:
+    """Clear answer-bearing attributes on ``root`` and every node beneath it.
+
+    Attributes are not children, so :func:`~pyqti.qtitree.prune` never sees them.
+    Skipping this walk is how ``label="KEY"``, ``style``, and arbitrary
+    author-supplied ``data-*`` and foreign-namespace attributes reach a candidate:
+    215 of the classes reachable from an item body carry the ``##any`` attribute
+    wildcard, and because that wildcard *absorbs* unknown attributes, the strict
+    parser's ``fail_on_unknown_properties`` never complains about them.
+    """
+    for node in iter_nodes(root):
+        for var in attribute_vars(node):
+            if var.is_attributes:
+                # The ##any wildcard: unbounded and unauditable. Always empty it.
+                setattr(node, var.name, {})
+            elif var.local_name == "class":
+                surviving = sorted(
+                    _tokens(getattr(node, var.name, None)) & ALLOWED_CLASS_TOKENS
+                )
+                setattr(node, var.name, surviving)
+            elif var.local_name in CLEAR_ATTRIBUTES:
+                setattr(node, var.name, [] if var.tokens else None)
 
 
 def redact_for_delivery(model: QtiAssessmentItem) -> QtiAssessmentItem:
@@ -168,8 +269,15 @@ def redact_for_delivery(model: QtiAssessmentItem) -> QtiAssessmentItem:
         for name in REDACT_ON_RESPONSE:
             setattr(declaration, name, None)
 
-    if safe.qti_item_body is not None:
-        prune(safe.qti_item_body, _should_strip_from_body)
+    # Prune the catalog too, not just the body. Accessibility content is published
+    # (see KEEP_WITH_REVIEW) so it must go through the same element filter -- it is
+    # authored prose, and prose is where an answer hides.
+    for subtree in (safe.qti_item_body, safe.qti_catalog_info):
+        if subtree is not None:
+            prune(subtree, _should_strip_from_body)
+
+    # Attributes last, so anything the element pass introduced is covered too.
+    _scrub_attributes(safe)
 
     return safe
 
