@@ -1,7 +1,8 @@
 """The demo harness over a real socket.
 
-This is the only test that exercises what the task actually asked for --- render and
-grade, end to end, over HTTP --- so it is worth the thread.
+The only test that exercises delivery end to end over HTTP, so it is worth the thread.
+Note what it *cannot* cover: rendering now happens in the browser, so these tests
+prove pyqti serves the right XML and grades correctly, not that the item displays.
 """
 
 import json
@@ -56,23 +57,54 @@ def test_index_lists_items(base_url):
     assert "choice-if-only" in body
 
 
-def test_item_page_renders_and_embeds_metadata(base_url):
+def test_item_page_hosts_the_web_components(base_url):
+    """The page ships no item markup --- only the components and a URL to fetch."""
     status, body = get(f"{base_url}/items/firstexample")
     assert status == 200
-    assert "<qti-choice-interaction" in body
-    assert 'max-choices="1"' in body
-    assert '<script type="application/json" id="qti-item">' in body
-    assert "Epinephrine" in body
+
+    assert "cdn.jsdelivr.net/npm/@citolab/qti-components@" in body
+    assert "/qti-item/+esm" in body
+    assert "/qti-interactions/+esm" in body
+    assert '<item-container item-url="/items/firstexample/item.xml">' in body, (
+        "the renderer needs a URL to fetch the item from"
+    )
+    assert '<script type="application/json" id="qti-item-meta">' in body
+
+    # pyqti no longer renders, so the question text must NOT be in the page.
+    assert "Epinephrine" not in body
+
+
+def test_item_page_omits_client_side_scoring_and_answer_reveal(base_url):
+    """Defence in depth: the page must not load anything that scores or reveals.
+
+    Redaction is the primary control --- the served XML has no response processing
+    and no correct response to act on --- but these components have no business being
+    on an exam page regardless.
+    """
+    _, body = get(f"{base_url}/items/firstexample")
+
+    assert "/qti-processing/+esm" not in body
+    assert "qti-processing" not in body
+    for reveal in (
+        "item-show-correct-response",
+        "item-show-candidate-correction",
+        "item-correct-response-mode",
+    ):
+        assert reveal not in body
 
 
 def test_static_assets_are_served(base_url):
     status, js = get(f"{base_url}/static/qti.js")
     assert status == 200
-    assert 'customElements.define("qti-choice-interaction"' in js
+    # Glue only: no custom element definitions, no scoring.
+    assert "customElements.define" not in js
+    assert "processResponse" not in js
+    assert "qti-item-context-updated" in js
+    assert "dataset.endpoint" in js
 
     status, css = get(f"{base_url}/static/qti.css")
     assert status == 200
-    assert ".qti-choice" in css
+    assert "#qti-result" in css
 
 
 def test_grading_a_correct_response(base_url):
@@ -97,7 +129,6 @@ def test_grading_an_incorrect_response(base_url):
 
 
 def test_score_is_a_json_number_not_a_string(base_url):
-    _, raw = get(f"{base_url}/items/firstexample")
     status, payload = post_json(
         f"{base_url}/api/items/firstexample/responses", {"responses": {"RESPONSE": "A"}}
     )
@@ -147,41 +178,63 @@ def test_malformed_json_is_400(base_url):
 
 
 def test_page_provides_every_hook_the_javascript_queries(base_url):
-    """Pins the seam between the server-rendered HTML and ``qti.js``.
+    """Pins the seam between the page and ``qti.js``.
 
-    Nothing else in the suite would catch a renamed id or attribute: the Python side
-    would still pass its own tests while the page quietly stopped grading in a
-    browser. Each assertion here corresponds to a selector in
-    ``pyqti/demo/static/qti.js``.
+    Nothing else in the suite would catch a renamed id: the Python side would keep
+    passing its own tests while the page quietly stopped grading in a browser. Each
+    assertion corresponds to a lookup in ``pyqti/demo/static/qti.js``.
+
+    This is weaker cover than it used to be, because the item markup is now produced
+    in the browser rather than here. A real browser check is the only thing that can
+    confirm the item actually renders.
     """
     _, page = get(f"{base_url}/items/firstexample")
 
-    # document.getElementById("qti-form") / form.dataset.endpoint
     assert 'id="qti-form"' in page
     assert 'data-endpoint="/api/items/firstexample/responses"' in page
-    # document.getElementById("qti-result")
     assert 'id="qti-result"' in page
-    # <script src="/static/qti.js">
-    assert '<script src="/static/qti.js">' in page
-
-    # customElements.define("qti-choice-interaction") + its attribute reads
-    interaction = page[page.index("<qti-choice-interaction") :]
-    interaction = interaction[: interaction.index("</qti-choice-interaction>")]
-    assert 'response-identifier="RESPONSE"' in interaction
-    assert 'max-choices="1"' in interaction
-    # querySelectorAll(":scope > qti-simple-choice") with an identifier to submit
-    assert interaction.count("<qti-simple-choice identifier=") == 4
+    assert 'src="/static/qti.js"' in page
 
     _, js = get(f"{base_url}/static/qti.js")
-    for selector in (
+    for reference in (
         'getElementById("qti-form")',
         'getElementById("qti-result")',
-        '":scope > qti-simple-choice"',
+        '"qti-assessment-item"',  # querySelector for the rendered item
         "dataset.endpoint",
-        "response-identifier",
-        "max-choices",
+        "qti-item-context-updated",
     ):
-        assert selector in js, f"qti.js no longer references {selector}"
+        assert reference in js, f"qti.js no longer references {reference}"
+
+
+def test_item_xml_route_serves_redacted_xml(base_url):
+    """The route Citolab fetches must never contain the answer.
+
+    ``tests/test_redaction.py`` proves redaction works; this proves the server
+    actually uses it on the path the browser hits.
+    """
+    status, xml = get(f"{base_url}/items/firstexample/item.xml")
+    assert status == 200
+
+    assert "qti-correct-response" not in xml
+    assert "qti-response-processing" not in xml
+    assert "qti-outcome-declaration" not in xml
+
+    # ...while still being a usable question.
+    assert "Epinephrine" in xml
+    assert xml.count("<qti-simple-choice") == 4
+    assert 'response-identifier="RESPONSE"' in xml
+
+
+def test_unknown_item_subpath_is_404(base_url):
+    """Only ``item.xml`` is served under an item; nothing else is reachable."""
+    for path in (
+        "/items/firstexample/secrets.xml",
+        "/items/firstexample/item.xml/extra",
+        "/items/nope/item.xml",
+    ):
+        with pytest.raises(urllib.error.HTTPError) as excinfo:
+            get(f"{base_url}{path}")
+        assert excinfo.value.code == 404, path
 
 
 def test_item_payload_shape(examples_dir):

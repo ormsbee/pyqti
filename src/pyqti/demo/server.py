@@ -1,10 +1,15 @@
-"""A stdlib HTTP harness that renders and grades items in a real browser.
+"""A stdlib HTTP harness that delivers and grades items in a real browser.
+
+pyqti does not render. The page loads Citolab's QTI web components from a CDN and
+points them at ``/items/{id}/item.xml``, so all presentation happens client-side.
+pyqti serves a **redacted** item and does all scoring server-side.
 
 Routes::
 
     GET  /                                 index of loaded items
-    GET  /items/{identifier}               full HTML page
-    GET  /static/{qti.js,qti.css}          front-end assets
+    GET  /items/{identifier}               HTML page hosting the web components
+    GET  /items/{identifier}/item.xml      REDACTED item XML for the renderer
+    GET  /static/{qti.js,qti.css}          demo glue and styling
     POST /api/items/{identifier}/responses grade a submission (JSON)
 
 **The JSON contract** is the part worth designing carefully, because a React
@@ -39,7 +44,7 @@ from typing import Any
 from pyqti.errors import PyQtiError
 from pyqti.item import ItemDefinition
 from pyqti.loading import load_assessment_item
-from pyqti.render.html import render_item_body_html
+from pyqti.redaction import presentation_xml
 from pyqti.session import ItemSession
 
 DEFAULT_EXAMPLES = Path(__file__).resolve().parents[3] / "examples"
@@ -92,8 +97,22 @@ def build_item_payload(item: ItemDefinition) -> dict[str, Any]:
     }
 
 
+#: Pinned so the demo is reproducible and the version is visible in the page source.
+CITOLAB_VERSION = "7.28.1"
+CITOLAB_CDN = f"https://cdn.jsdelivr.net/npm/@citolab/qti-components@{CITOLAB_VERSION}"
+
+
 def render_page(item: ItemDefinition) -> str:
-    body = render_item_body_html(item.item_body)
+    """The item page. All rendering happens in the browser, not here.
+
+    Two omissions are deliberate and security-relevant:
+
+    * ``qti-processing`` is **not** imported. pyqti is the only thing that scores, and
+      the served XML has no response processing in it to evaluate anyway.
+    * ``item-show-correct-response``, ``item-show-candidate-correction`` and
+      ``item-correct-response-mode`` are **not** included. Those components exist to
+      reveal the answer, which the served XML does not contain.
+    """
     payload = json.dumps(build_item_payload(item), indent=2)
     return f"""<!doctype html>
 <html lang="en">
@@ -102,21 +121,29 @@ def render_page(item: ItemDefinition) -> str:
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{item.title} &mdash; pyqti demo</title>
 <link rel="stylesheet" href="/static/qti.css">
+<script type="module">
+  import '{CITOLAB_CDN}/qti-item/+esm';
+  import '{CITOLAB_CDN}/qti-interactions/+esm';
+  // Citolab's response-processing module is intentionally not imported here:
+  // pyqti does all scoring, server-side, against the unredacted item.
+</script>
 </head>
 <body>
 <main>
 <p class="crumb"><a href="/">&larr; all items</a></p>
 <h1>{item.title}</h1>
 <form id="qti-form" data-endpoint="/api/items/{item.identifier}/responses">
-{body}
+<qti-item>
+  <item-container item-url="/items/{item.identifier}/item.xml"></item-container>
+</qti-item>
 <button type="submit">Submit</button>
 </form>
 <output id="qti-result" hidden></output>
 </main>
-<script type="application/json" id="qti-item">
+<script type="application/json" id="qti-item-meta">
 {payload}
 </script>
-<script src="/static/qti.js"></script>
+<script type="module" src="/static/qti.js"></script>
 </body>
 </html>
 """
@@ -188,14 +215,26 @@ class QtiDemoHandler(BaseHTTPRequestHandler):
         elif path.startswith("/static/"):
             self._serve_static(path.removeprefix("/static/"))
         elif path.startswith("/items/"):
-            identifier = path.removeprefix("/items/").strip("/")
-            item = self.items.get(identifier)
-            if item is None:
-                self._not_found()
-            else:
-                self._send_html(200, render_page(item))
+            self._serve_item(path.removeprefix("/items/").strip("/"))
         else:
             self._not_found()
+
+    def _serve_item(self, rest: str) -> None:
+        """``{id}`` serves the page; ``{id}/item.xml`` serves the redacted item."""
+        identifier, _, tail = rest.partition("/")
+        item = self.items.get(identifier)
+
+        if item is None or tail not in ("", "item.xml"):
+            self._not_found()
+        elif tail == "item.xml":
+            # presentation_xml is the ONLY function permitted to produce item XML for
+            # a candidate. It strips the correct response, response processing,
+            # mapping, feedback and outcome declarations; the authoritative item that
+            # /api/.../responses grades against is untouched.
+            body = presentation_xml(item.model).encode("utf-8")
+            self._send(200, body, "application/xml; charset=utf-8")
+        else:
+            self._send_html(200, render_page(item))
 
     def do_POST(self) -> None:  # noqa: N802
         path = self.path.split("?", 1)[0]

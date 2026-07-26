@@ -1,81 +1,48 @@
-// Front-end for the pyqti demo.
+// Glue between Citolab's QTI web components and pyqti's grading endpoint.
 //
-// The server renders qti-choice-interaction / qti-simple-choice through as real
-// custom elements, so this file is the seam the README's "web components for the
-// qti-item-body" approach needs. A React implementation later replaces the element
-// definition below; the HTML contract and the JSON contract stay exactly as they are.
+// This file deliberately contains no rendering and no scoring. Citolab renders the
+// item from the XML pyqti serves; pyqti scores the responses. All this does is move
+// candidate responses from the former to the latter.
+//
+// Note what is NOT here: nothing invokes Citolab's response-processing entry point,
+// and nothing displays a correct response. The served XML contains neither response
+// processing nor a correct response, so there is nothing to evaluate or reveal even
+// by accident.
 
-class QtiChoiceInteraction extends HTMLElement {
-  connectedCallback() {
-    if (this._upgraded) return;
-    this._upgraded = true;
+const CONTEXT_UPDATED = "qti-item-context-updated";
 
-    this.responseIdentifier = this.getAttribute("response-identifier");
-    this.maxChoices = parseInt(this.getAttribute("max-choices") ?? "1", 10);
-    this.minChoices = parseInt(this.getAttribute("min-choices") ?? "0", 10);
+// Response variables live alongside outcome and built-in variables in the item
+// context. Only responses may be sent: the server derives outcomes itself and
+// ignores anything else, but there is no reason to put them on the wire.
+const NOT_RESPONSES = new Set([
+  "completionStatus",
+  "numAttempts",
+  "duration",
+  "SCORE",
+  "MAXSCORE",
+  "FEEDBACK",
+]);
 
-    // max-choices="1" is single cardinality -> radio. Anything else is a
-    // multi-select, which pyqti does not grade yet; the input type still reflects
-    // the item so the mismatch is visible rather than silent.
-    const inputType = this.maxChoices === 1 ? "radio" : "checkbox";
+let latestVariables = [];
 
-    const prompt = this.querySelector(":scope > qti-prompt");
-    const choices = Array.from(this.querySelectorAll(":scope > qti-simple-choice"));
+document.addEventListener(CONTEXT_UPDATED, (event) => {
+  latestVariables = event.detail?.itemContext?.variables ?? [];
+});
 
-    const fieldset = document.createElement("fieldset");
-    fieldset.className = "qti-choices";
-    fieldset.dataset.orientation = this.getAttribute("orientation") ?? "vertical";
-
-    const legend = document.createElement("legend");
-    legend.innerHTML = prompt ? prompt.innerHTML : "Choose one";
-    fieldset.appendChild(legend);
-
-    for (const choice of choices) {
-      const identifier = choice.getAttribute("identifier");
-      const id = `${this.responseIdentifier}-${identifier}`;
-
-      const label = document.createElement("label");
-      label.className = "qti-choice";
-      label.setAttribute("for", id);
-
-      const input = document.createElement("input");
-      input.type = inputType;
-      input.name = this.responseIdentifier;
-      input.value = identifier;
-      input.id = id;
-
-      const text = document.createElement("span");
-      text.innerHTML = choice.innerHTML;
-
-      label.append(input, text);
-      fieldset.appendChild(label);
-    }
-
-    if (prompt) prompt.remove();
-    for (const choice of choices) choice.remove();
-    this.appendChild(fieldset);
-  }
-
-  // Single cardinality yields a scalar (or null); multiple yields an array. This
-  // mirrors the JSON encoding rules the server documents.
-  get value() {
-    const checked = Array.from(
-      this.querySelectorAll("input:checked"),
-      (input) => input.value,
-    );
-    if (this.maxChoices === 1) {
-      return checked.length ? checked[0] : null;
-    }
-    return checked;
-  }
-}
-
-customElements.define("qti-choice-interaction", QtiChoiceInteraction);
-
-function collectResponses(form) {
+function collectResponses() {
   const responses = {};
-  for (const interaction of form.querySelectorAll("qti-choice-interaction")) {
-    responses[interaction.responseIdentifier] = interaction.value;
+
+  // Prefer reading straight off the element: it is authoritative at submit time,
+  // whereas the event only tells us about the last change.
+  const item = document.querySelector("qti-assessment-item");
+  const variables = item?.variables ?? latestVariables;
+
+  for (const variable of variables) {
+    const identifier = variable.identifier;
+    if (!identifier || NOT_RESPONSES.has(identifier)) continue;
+    // Citolab reports declared-but-unset variables too; null is a NULL response,
+    // which pyqti handles, so pass it through rather than dropping the key.
+    responses[identifier] = variable.value ?? null;
   }
   return responses;
 }
@@ -109,7 +76,7 @@ document.addEventListener("DOMContentLoaded", () => {
       const response = await fetch(form.dataset.endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ responses: collectResponses(form) }),
+        body: JSON.stringify({ responses: collectResponses() }),
       });
       renderResult(output, await response.json());
     } catch (err) {

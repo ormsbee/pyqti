@@ -71,35 +71,20 @@ ul.items li {
   margin-bottom: 0.35rem;
 }
 
-.qti-item-body > p:first-child {
-  margin-top: 0;
+/* Citolab renders the item, so there is very little to style here. These target the
+   custom elements it defines rather than any markup pyqti produces -- pyqti no longer
+   produces markup at all. */
+
+qti-item {
+  display: block;
 }
 
-.qti-choices {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin: 1.5rem 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+item-container {
+  display: block;
+  margin-bottom: 1.5rem;
 }
 
-.qti-choices[data-orientation="horizontal"] {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-}
-
-.qti-choices legend {
-  padding: 0 0.4rem;
-  font-weight: 600;
-}
-
-.qti-choice {
-  display: flex;
-  align-items: baseline;
-  gap: 0.55rem;
+qti-simple-choice {
   cursor: pointer;
 }
 
