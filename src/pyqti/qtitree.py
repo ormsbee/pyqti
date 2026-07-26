@@ -228,6 +228,42 @@ def children_named(obj: Any, name: str) -> list[Any]:
     return [child for child_name, child in iter_children(obj) if child_name == name]
 
 
+def iter_nodes(obj: Any) -> Iterator[Any]:
+    """Yield ``obj`` and every dataclass descendant of it, depth-first.
+
+    Where :func:`prune` walks the tree to remove *elements*, this exists so a caller
+    can visit every node to act on its *attributes* --- which are not children and so
+    are invisible to :func:`iter_children`. Redaction needs both: an answer can hide
+    in ``label="KEY"`` or ``class="correct-answer"`` just as easily as in an element.
+    """
+    yield obj
+
+    for var in meta_for(type(obj)).get_all_vars():
+        if not _is_child_var(var):
+            continue
+        value = getattr(obj, var.name, None)
+        if value is None:
+            continue
+        for child in value if isinstance(value, list) else [value]:
+            if isinstance(child, str):
+                continue
+            inner = _unwrap(child)
+            if is_dataclass(inner):
+                yield from iter_nodes(inner)
+
+
+def attribute_vars(obj: Any) -> Iterator[XmlVar]:
+    """Yield the attribute vars of ``obj``, including the ``##any`` wildcard.
+
+    ``var.is_attributes`` (plural) marks the wildcard that absorbs arbitrary
+    author-supplied attributes. It is distinct from ``var.is_attribute``, and missing
+    it is how arbitrary attributes reach a candidate untouched.
+    """
+    for var in meta_for(type(obj)).get_all_vars():
+        if var.is_attribute or var.is_attributes:
+            yield var
+
+
 def _rescued_tail(node: Any) -> str | None:
     """Text that followed ``node`` but was absorbed into ``node`` by the parser.
 

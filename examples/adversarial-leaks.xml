@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+An item deliberately stuffed with every way we know of to leak the answer, so that
+redaction is tested against capability rather than against the accidents of the other
+fixtures.
+
+Every payload that must NOT reach a candidate is a unique sentinel of the form
+LEAK_*; tests/test_redaction.py asserts that no sentinel survives. Payloads that must
+survive are KEEP_*. Add a vector here before fixing it, and never remove one.
+
+Several of these were live leaks before the attribute-scrubbing pass existed: element
+redaction alone does not touch attributes, and 215 of the classes reachable from an
+item body carry the ##any attribute wildcard, which absorbs arbitrary author
+attributes without the strict parser objecting.
+-->
+<qti-assessment-item
+ xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
+ xmlns:acme="http://acme.test/qti-extension"
+ identifier="adversarial-leaks"
+ title="Adversarial Leaks"
+ time-dependent="false"
+ label="LEAK_ITEM_LABEL"
+ tool-name="LEAK_TOOL_NAME"
+ tool-version="LEAK_TOOL_VERSION"
+ acme:answer="LEAK_ITEM_FOREIGN_ATTR"
+ xml:lang="en-US">
+
+ <qti-response-declaration base-type="identifier" cardinality="single" identifier="RESPONSE">
+  <qti-correct-response interpretation="LEAK_CORRECT_INTERPRETATION">
+   <qti-value>LEAK_CORRECT_VALUE_A</qti-value>
+  </qti-correct-response>
+  <qti-default-value>
+   <qti-value>LEAK_RESPONSE_DEFAULT</qti-value>
+  </qti-default-value>
+  <qti-mapping default-value="0">
+   <qti-map-entry map-key="A" mapped-value="1"/>
+  </qti-mapping>
+ </qti-response-declaration>
+
+ <qti-outcome-declaration base-type="float" cardinality="single" identifier="SCORE"
+  interpretation="LEAK_OUTCOME_INTERPRETATION" normal-maximum="1">
+  <qti-default-value><qti-value>0</qti-value></qti-default-value>
+ </qti-outcome-declaration>
+
+ <qti-stylesheet href="LEAK_ITEM_STYLESHEET.css" type="text/css"/>
+
+ <qti-item-body>
+  <!-- use="scoring" IS the mark scheme, even when tagged for the candidate. -->
+  <qti-rubric-block use="scoring" view="candidate">
+   <qti-content-body><p>LEAK_SCORING_RUBRIC</p></qti-content-body>
+  </qti-rubric-block>
+
+  <!-- view is a token list: "candidate scorer" must not count as candidate-only. -->
+  <qti-rubric-block use="instructions" view="candidate scorer">
+   <qti-content-body><p>LEAK_MIXED_VIEW_RUBRIC</p></qti-content-body>
+  </qti-rubric-block>
+
+  <!-- A legitimate candidate rubric, which must survive intact. -->
+  <qti-rubric-block use="instructions" view="candidate">
+   <qti-stylesheet href="LEAK_RUBRIC_STYLESHEET.css" type="text/css"/>
+   <qti-content-body><p>KEEP_INSTRUCTIONS</p></qti-content-body>
+  </qti-rubric-block>
+
+  <p label="LEAK_PARA_LABEL" class="LEAK_PARA_CLASS">KEEP_QUESTION_TEXT which hormone?</p>
+  <p>Tail check: before <qti-printed-variable identifier="SCORE"/> KEEP_TAIL_AFTER</p>
+
+  <qti-feedback-block outcome-identifier="SCORE" identifier="fb" show-hide="show">
+   <qti-content-body><p>LEAK_FEEDBACK_BLOCK</p></qti-content-body>
+  </qti-feedback-block>
+
+  <qti-choice-interaction max-choices="1" min-choices="1" response-identifier="RESPONSE"
+   class="qti-labels-upper-alpha LEAK_INTERACTION_CLASS">
+   <qti-prompt>KEEP_PROMPT</qti-prompt>
+   <qti-simple-choice identifier="A"
+    label="LEAK_CHOICE_LABEL"
+    class="LEAK_CHOICE_CLASS"
+    data-scoring-note="LEAK_DATA_ATTRIBUTE"
+    acme:answer="LEAK_CHOICE_FOREIGN_ATTR">KEEP_CHOICE_A</qti-simple-choice>
+   <qti-simple-choice identifier="B">KEEP_CHOICE_B <acme:hint>LEAK_FOREIGN_ELEMENT</acme:hint></qti-simple-choice>
+   <qti-simple-choice identifier="C">KEEP_CHOICE_C</qti-simple-choice>
+  </qti-choice-interaction>
+ </qti-item-body>
+
+ <qti-catalog-info>
+  <qti-catalog id="glossary-1">
+   <qti-card support="glossary-on-screen">
+    <qti-html-content><div>KEEP_GLOSSARY_HORMONE</div></qti-html-content>
+   </qti-card>
+  </qti-catalog>
+ </qti-catalog-info>
+
+ <qti-response-processing>
+  <qti-response-condition>
+   <qti-response-if>
+    <qti-match>
+     <qti-variable identifier="RESPONSE"/>
+     <qti-base-value base-type="identifier">LEAK_RP_BASE_VALUE_A</qti-base-value>
+    </qti-match>
+    <qti-set-outcome-value identifier="SCORE">
+     <qti-base-value base-type="float">1</qti-base-value>
+    </qti-set-outcome-value>
+   </qti-response-if>
+  </qti-response-condition>
+ </qti-response-processing>
+
+ <qti-modal-feedback outcome-identifier="SCORE" show-hide="show" identifier="mf"
+  title="LEAK_MODAL_TITLE">
+  <qti-content-body><p>LEAK_MODAL_FEEDBACK</p></qti-content-body>
+ </qti-modal-feedback>
+</qti-assessment-item>

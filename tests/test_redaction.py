@@ -12,6 +12,7 @@ cannot-score check, and an immutability check on the authoritative model.
 
 import re
 from dataclasses import fields
+from xml.etree import ElementTree
 
 import pytest
 
@@ -19,10 +20,14 @@ from pyqti.errors import UnsupportedContentError
 from pyqti.item import ItemDefinition
 from pyqti.loading import load_assessment_item
 from pyqti.models.org.imsglobal.xsd.imsqtiasi_v3p0 import QtiAssessmentItem
+from pyqti.models.org.imsglobal.xsd.imsqtiasi_v3p0.response_declaration_dtype import (
+    ResponseDeclarationDtype,
+)
 from pyqti.redaction import (
     CLEAR,
     KEEP,
     KEEP_WITH_REVIEW,
+    REDACT_ON_RESPONSE,
     presentation_xml,
     redact_for_delivery,
 )
@@ -44,6 +49,12 @@ ALLOWED_ELEMENTS = {
     "qti-prompt",
     "qti-rubric-block",
     "qti-content-body",
+    # accessibility catalog (published deliberately -- see KEEP_WITH_REVIEW)
+    "qti-catalog",
+    "qti-card",
+    "qti-card-entry",
+    "qti-html-content",
+    "qti-file-href",
     # html content
     "a",
     "abbr",
@@ -114,13 +125,68 @@ FORBIDDEN = (
     "schemaLocation",
 )
 
-FIXTURES = ["firstexample.xml", "choice-if-only.xml", "choice-rich-body.xml"]
+FIXTURES = [
+    "firstexample.xml",
+    "choice-if-only.xml",
+    "choice-rich-body.xml",
+    "adversarial-leaks.xml",
+]
 
 QTI_NS = "http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
+XML_NS = "http://www.w3.org/XML/1998/namespace"
+
+#: Attributes permitted on any element.
+GLOBAL_ATTRIBUTES = {"id", "class", "lang", "dir", f"{{{XML_NS}}}lang"}
+
+#: Attributes permitted on specific elements. Anything not listed here or in
+#: :data:`GLOBAL_ATTRIBUTES` fails the pair allowlist below.
+#:
+#: The pair form matters. A flat element allowlist cannot see attributes at all, and
+#: attributes are where the answer hides most easily: ``label="KEY"``, ``style``
+#: highlighting the right choice, or --- once text entry is supported ---
+#: ``pattern-mask="^(Paris|paris)$"``, which frequently *is* the answer.
+ELEMENT_ATTRIBUTES = {
+    "qti-assessment-item": {"identifier", "title", "time-dependent", "adaptive"},
+    "qti-response-declaration": {"identifier", "cardinality", "base-type"},
+    "qti-choice-interaction": {
+        "response-identifier",
+        "max-choices",
+        "min-choices",
+        "shuffle",
+        "orientation",
+    },
+    "qti-simple-choice": {"identifier"},
+    "qti-rubric-block": {"use", "view"},
+    "qti-assessment-stimulus-ref": {"identifier", "href"},
+    "qti-card": {"support"},
+    "a": {"href", "target", "rel"},
+    "img": {"src", "alt", "width", "height"},
+    "td": {"colspan", "rowspan", "headers", "scope"},
+    "th": {"colspan", "rowspan", "headers", "scope", "abbr"},
+    "ol": {"type", "start", "reversed"},
+}
+
+
+def strip_ns(tag: str) -> str:
+    return tag.split("}")[-1] if tag.startswith("{") else tag
 
 
 def element_names(xml: str) -> set[str]:
     return set(re.findall(r"<([a-zA-Z][-a-zA-Z0-9]*)", xml))
+
+
+def element_attribute_pairs(xml: str) -> set[tuple[str, str]]:
+    """Every ``(element, attribute)`` pair in the document.
+
+    Parsed rather than regexed: the regex approach used for element names cannot see
+    attributes, and gets foreign-namespace names right only by accident.
+    """
+    root = ElementTree.fromstring(xml)
+    return {
+        (strip_ns(element.tag), name)
+        for element in root.iter()
+        for name in element.attrib
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -137,6 +203,33 @@ def test_served_xml_contains_only_allowed_elements(examples_dir, name):
         f"{name} would publish unrecognised element(s) {sorted(unexpected)}. "
         "Decide whether each is safe for a candidate to see, then either strip it in "
         "pyqti/redaction.py or add it to ALLOWED_ELEMENTS here."
+    )
+
+
+@pytest.mark.parametrize("name", FIXTURES)
+def test_served_xml_contains_only_allowed_attributes(examples_dir, name):
+    """The allowlist must cover attributes, not just elements.
+
+    This is the check that was missing when redaction first shipped: ``prune()``
+    removes children and never touches attributes, so ``label``, ``style``,
+    ``data-*`` and foreign-namespace attributes all reached the candidate. 215 of the
+    classes reachable from an item body carry the ``##any`` attribute wildcard, and
+    because that wildcard absorbs unknown attributes the strict parser stays silent
+    about them.
+    """
+    xml = presentation_xml(load_assessment_item(examples_dir / name))
+
+    unexpected = {
+        (element, attribute)
+        for element, attribute in element_attribute_pairs(xml)
+        if attribute not in GLOBAL_ATTRIBUTES
+        and attribute not in ELEMENT_ATTRIBUTES.get(element, set())
+    }
+
+    assert not unexpected, (
+        f"{name} would publish unrecognised attribute(s) {sorted(unexpected)}. "
+        "Decide whether each is safe for a candidate to see, then either clear it in "
+        "pyqti/redaction.py or add it to ELEMENT_ATTRIBUTES here."
     )
 
 
@@ -266,6 +359,42 @@ def test_feedback_and_scorer_rubric_are_stripped_but_candidate_rubric_kept():
 # --------------------------------------------------------------------------- #
 # Fail closed
 # --------------------------------------------------------------------------- #
+
+
+def test_adversarial_fixture_leaks_no_sentinel(examples_dir):
+    """The regression suite for every leak vector we know of.
+
+    ``examples/adversarial-leaks.xml`` carries a unique ``LEAK_*`` sentinel per vector
+    and ``KEEP_*`` for everything that must survive. Sentinels are discovered from the
+    source rather than listed here, so adding a vector to the fixture automatically
+    extends this test --- there is no second place to remember to update.
+    """
+    path = examples_dir / "adversarial-leaks.xml"
+    source = path.read_text()
+    served = presentation_xml(load_assessment_item(path))
+
+    leaks = sorted(set(re.findall(r"LEAK_[A-Z_0-9]+", source)))
+    keeps = sorted(set(re.findall(r"KEEP_[A-Z_0-9]+", source)))
+
+    assert len(leaks) >= 20, "the adversarial fixture has lost its teeth"
+    assert [s for s in leaks if s in served] == [], "answer-bearing content published"
+    assert [s for s in keeps if s not in served] == [], "candidate content destroyed"
+
+
+def test_response_declaration_publishes_only_three_attributes():
+    """``qti-response-declaration`` must be provably closed.
+
+    It is the one published class with no wildcards at all, so after
+    ``REDACT_ON_RESPONSE`` clears its four element fields it can only carry
+    ``identifier``, ``cardinality`` and ``base-type``. Pinning that means a model
+    regeneration which adds a field to it fails here.
+    """
+    published = {
+        field.name
+        for field in fields(ResponseDeclarationDtype)
+        if field.name not in REDACT_ON_RESPONSE
+    }
+    assert published == {"identifier", "cardinality", "base_type"}
 
 
 def test_every_item_field_is_classified():

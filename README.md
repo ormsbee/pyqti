@@ -90,12 +90,31 @@ what `ItemSession` grades against; `presentation_xml()` derives the only copy a
 candidate may receive. **It is the only function permitted to produce item XML for a
 front end.**
 
-Redaction works from an **allowlist**: every field of `QtiAssessmentItem` is
-explicitly classified in `pyqti/redaction.py`, and an unclassified field raises. A
-denylist would only remove the leaks somebody already thought of, whereas the real
-risk is a QTI feature nobody anticipated. `tests/test_redaction.py` enforces the same
-shape on the output — the served XML may only contain elements from a permitted set,
-so anything unfamiliar fails the build rather than reaching a candidate.
+Redaction works from an **allowlist**, at three levels. Every field of
+`QtiAssessmentItem` is explicitly classified in `pyqti/redaction.py` and an
+unclassified field raises. Elements are filtered throughout the body and the catalog.
+And **attributes are scrubbed on every node** — the `##any` attribute wildcard is
+emptied, `label`/`style`/`xref` are cleared, and `class` is filtered down to
+allowlisted QTI shared-vocabulary tokens.
+
+That third level is not theoretical. It was missing in the first version of this code,
+and the result was that `label="KEY"`, `class="correct-answer"`, `data-scoring-note`
+and arbitrary foreign-namespace attributes all reached the candidate. 215 of the
+classes reachable from an item body carry the `##any` attribute wildcard, and because
+that wildcard *absorbs* unknown attributes, `fail_on_unknown_properties` never
+objects. Element redaction alone does not touch attributes.
+
+`tests/test_redaction.py` enforces the same shape on the output, over
+`(element, attribute)` **pairs** rather than element names alone — a flat element
+allowlist cannot see attributes, which is precisely how the above got through.
+`examples/adversarial-leaks.xml` carries a unique sentinel per known vector and the
+suite asserts that none survives.
+
+Two subtleties worth knowing if you touch the rubric logic: `qti-rubric-block`
+requires `use == "instructions"` **and** `set(view) == {"candidate"}`. Checking `view`
+alone publishes the mark scheme whenever an author also tagged it for the candidate,
+and `"candidate" in view` keeps `view="candidate scorer"` — membership is a denylist
+wearing an allowlist's clothes.
 
 Two decisions there are worth knowing about, because both trade a little exposure for
 a lot of correctness. `qti-assessment-stimulus-ref` is **kept**: strip it and the
