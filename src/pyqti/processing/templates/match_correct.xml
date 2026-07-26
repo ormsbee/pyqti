@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Vendored copy of the 1EdTech QTI built-in response processing template
+"match_correct".
+
+Source URI: https://purl.imsglobal.org/spec/qti/v3p0/rptemplates/match_correct
+Retrieved:  transcribed from the QTI specification's rptemplates set.
+
+Do not "simplify" this file. The qti-response-else branch is load-bearing: it is
+what forces SCORE to 0 for an incorrect response. Items in the wild (including
+examples/firstexample.xml, taken from the 1EdTech Beginner's Guide) declare SCORE
+with a qti-default-value of 1, so an interpreter that skipped the else branch would
+score every wrong answer as correct.
+-->
+<qti-response-processing xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0">
+  <qti-response-condition>
+    <qti-response-if>
+      <qti-match>
+        <qti-variable identifier="RESPONSE"/>
+        <qti-correct identifier="RESPONSE"/>
+      </qti-match>
+      <qti-set-outcome-value identifier="SCORE">
+        <qti-base-value base-type="float">1</qti-base-value>
+      </qti-set-outcome-value>
+    </qti-response-if>
+    <qti-response-else>
+      <qti-set-outcome-value identifier="SCORE">
+        <qti-base-value base-type="float">0</qti-base-value>
+      </qti-set-outcome-value>
+    </qti-response-else>
+  </qti-response-condition>
+</qti-response-processing>
