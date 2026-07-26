@@ -8,7 +8,10 @@ authors = [
 ]
 requires-python = ">=3.13"
 dependencies = [
-    "xsdata>=26.2",
+    # Upper bound is deliberate: pyqti depends on xsdata internals that are not
+    # part of its documented public API (XmlContext.build, XmlMeta, XmlVar.elements,
+    # and serializers.mixins.EventGenerator). See src/pyqti/_xsdata.py.
+    "xsdata>=26.2,<27",
 ]
 
 [build-system]
@@ -19,7 +22,33 @@ build-backend = "uv_build"
 dev = [
     "ruff>=0.15.14",
     "xsdata[cli]>=26.2",
+    "pytest>=8",
+    "mypy>=1.13",
 ]
 
 [project.scripts]
 overhead = "pyqti.scripts.overhead:main"
+qti-demo = "pyqti.demo.server:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+src = ["src"]
+line-length = 88
+# pyqti.models is ~118k lines of generated code; linting it swamps every run.
+extend-exclude = ["src/pyqti/models"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["src/pyqti", "tests"]
+exclude = "^src/pyqti/models/"
+
+[[tool.mypy.overrides]]
+module = "pyqti.models.*"
+ignore_errors = true
+follow_imports = "skip"

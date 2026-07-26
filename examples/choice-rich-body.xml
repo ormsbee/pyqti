@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+A single-answer multiple choice item whose body exercises the renderer's long tail:
+a qti-prompt, nested inline markup, a list, a link, entity-escaped text, a void
+element, and markup inside a qti-simple-choice.
+
+The renderer uses an allowlist that RAISES on unknown elements, so this fixture is
+what justifies each entry in that list. Add content here first, then widen the
+allowlist - never the other way round.
+
+Response processing uses the built-in match_correct template, and SCORE defaults to
+0 here (unlike firstexample.xml) so the expected scores are the obvious ones.
+-->
+<qti-assessment-item
+ xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
+ identifier="choice-rich-body"
+ title="Rich Body"
+ time-dependent="false"
+ xml:lang="en-US">
+ <qti-response-declaration base-type="identifier" cardinality="single" identifier="RESPONSE">
+  <qti-correct-response>
+   <qti-value>lt</qti-value>
+  </qti-correct-response>
+ </qti-response-declaration>
+ <qti-outcome-declaration base-type="float" cardinality="single" identifier="SCORE">
+  <qti-default-value>
+   <qti-value>0</qti-value>
+  </qti-default-value>
+ </qti-outcome-declaration>
+ <qti-item-body>
+  <p>Consider the following <em>strictly <strong>nested</strong></em> markup.</p>
+  <ul>
+   <li>Angle brackets: 1 &lt; 2</li>
+   <li>An ampersand: Tom &amp; Jerry</li>
+   <li>An apostrophe: I'm fine</li>
+  </ul>
+  <p>See the <a href="https://www.imsglobal.org/spec/qti/v3p0/guide">QTI 3.0 guide</a> for details.<br/></p>
+  <qti-choice-interaction max-choices="1" min-choices="1" response-identifier="RESPONSE">
+   <qti-prompt>Which comparison is <strong>true</strong>?</qti-prompt>
+   <qti-simple-choice identifier="lt">1 &lt; 2</qti-simple-choice>
+   <qti-simple-choice identifier="gt">2 &lt; 1</qti-simple-choice>
+   <qti-simple-choice identifier="eq">1 <em>equals</em> 2</qti-simple-choice>
+  </qti-choice-interaction>
+ </qti-item-body>
+ <qti-response-processing template="https://purl.imsglobal.org/spec/qti/v3p0/rptemplates/match_correct"/>
+</qti-assessment-item>

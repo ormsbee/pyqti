@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Vendored copy of the 1EdTech QTI built-in response processing template
+"map_response".
+
+Source URI: https://purl.imsglobal.org/spec/qti/v3p0/rptemplates/map_response
+Retrieved:  transcribed from the QTI specification's rptemplates set.
+
+This template is vendored but NOT yet usable: pyqti does not implement the
+qti-map-response expression, so compiling it raises UnsupportedExpressionError.
+That is deliberate. A caller who asks for map_response gets an error naming exactly
+the missing operator, which is more useful than "unknown template", and the template
+starts working the moment qti-map-response is implemented.
+
+Note that qti-mapping carries lower-bound / upper-bound / default-value clamping.
+A partial implementation of that would mis-score partial credit, which is worse than
+refusing outright.
+-->
+<qti-response-processing xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0">
+  <qti-response-condition>
+    <qti-response-if>
+      <qti-is-null>
+        <qti-variable identifier="RESPONSE"/>
+      </qti-is-null>
+      <qti-set-outcome-value identifier="SCORE">
+        <qti-base-value base-type="float">0</qti-base-value>
+      </qti-set-outcome-value>
+    </qti-response-if>
+    <qti-response-else>
+      <qti-set-outcome-value identifier="SCORE">
+        <qti-map-response identifier="RESPONSE"/>
+      </qti-set-outcome-value>
+    </qti-response-else>
+  </qti-response-condition>
+</qti-response-processing>

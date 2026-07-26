@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+A single-answer multiple choice item with INLINE response processing that has a
+qti-response-if but deliberately NO qti-response-else.
+
+This fixture earns its place twice over:
+
+1. It is the only way to test outcome initialisation. The built-in match_correct
+   template assigns SCORE on both branches, which makes a declared default
+   invisible - so firstexample.xml cannot tell a correct initialisation from no
+   initialisation at all. Here the else path is absent, so the declared default of
+   1 has to survive for a wrong or unanswered response.
+
+2. It proves the response processing engine really interprets inline rules, rather
+   than merely recognising the template URI in firstexample.xml.
+
+Expected outcomes:
+    RESPONSE=A     -> SCORE 2.0   (the if-branch fired)
+    RESPONSE=B     -> SCORE 1.0   (declared default survives)
+    unanswered     -> SCORE 1.0   (NULL match skips the branch; it is not False)
+-->
+<qti-assessment-item
+ xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
+ identifier="choice-if-only"
+ title="If Without Else"
+ time-dependent="false"
+ xml:lang="en-US">
+ <qti-response-declaration base-type="identifier" cardinality="single" identifier="RESPONSE">
+  <qti-correct-response>
+   <qti-value>A</qti-value>
+  </qti-correct-response>
+ </qti-response-declaration>
+ <qti-outcome-declaration base-type="float" cardinality="single" identifier="SCORE">
+  <qti-default-value>
+   <qti-value>1</qti-value>
+  </qti-default-value>
+ </qti-outcome-declaration>
+ <qti-item-body>
+  <p>Which of these is the first letter of the alphabet?</p>
+  <qti-choice-interaction max-choices="1" min-choices="1" response-identifier="RESPONSE">
+   <qti-simple-choice identifier="A">A</qti-simple-choice>
+   <qti-simple-choice identifier="B">B</qti-simple-choice>
+  </qti-choice-interaction>
+ </qti-item-body>
+ <qti-response-processing>
+  <qti-response-condition>
+   <qti-response-if>
+    <qti-match>
+     <qti-variable identifier="RESPONSE"/>
+     <qti-correct identifier="RESPONSE"/>
+    </qti-match>
+    <qti-set-outcome-value identifier="SCORE">
+     <qti-base-value base-type="float">2</qti-base-value>
+    </qti-set-outcome-value>
+   </qti-response-if>
+  </qti-response-condition>
+ </qti-response-processing>
+</qti-assessment-item>
