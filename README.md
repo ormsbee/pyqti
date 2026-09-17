@@ -50,6 +50,9 @@ accepts a `seed`, so pyqti should supply one per attempt); template processing f
 randomised items; and withholding outcomes until score release. The demo returns
 scores immediately, which is right for a demo and wrong for an exam.
 
+The first two of those are supplied by the XBlock (see "Open edX" below), which
+is what a delivery engine is for. The demo harness still has neither.
+
 ### Try it
 
 ```sh
@@ -58,6 +61,9 @@ uv run pytest
 uv run ruff check && uv run mypy
 uv run overhead          # model import / parse memory and timing
 ```
+
+Python 3.12 or newer. The floor is set by Open edX rather than by anything pyqti
+uses --- see "Open edX" below.
 
 ### Library use
 
@@ -75,6 +81,80 @@ session.submit({"RESPONSE": "B"})      # -> {'SCORE': 0.0}
 
 `load_assessment_item` takes XML *content* as `str`/`bytes`, or a file via `Path` or
 a file object.
+
+## Open edX
+
+pyqti ships an optional XBlock, so an Open edX course can deliver and grade QTI
+items. It is **optional**: `pip install pyqti` remains a library with one
+dependency and no opinion about Django.
+
+```sh
+pip install pyqti[xblock]
+```
+
+The block registers the OLX tag `qti-assessment-item`, which means a course
+authors **real QTI** rather than QTI wrapped in something else:
+
+```
+course/
+  qti-assessment-item/
+    luggage.xml        <qti-assessment-item xmlns="..." identifier="luggage" ...>
+```
+
+`parse_xml` reads that subtree as QTI content (never as child XBlocks), and
+`add_xml_to_node` writes it back out, so import and export round-trip. The QTI
+namespace may be declared or left off --- an untouched QTI file and
+namespace-free OLX are both accepted, and export returns whichever shape the
+author wrote.
+
+Every authoring route --- OLX import and the Studio editor alike --- goes through
+one validated store, which parses the item, compiles its response processing and
+redacts it before accepting it. An item pyqti cannot handle is refused **at
+authoring time**, with pyqti's own message, rather than failing in front of a
+candidate. That matters more here than in the demo: a course can be imported
+without ever opening Studio.
+
+What the LMS supplies that `ItemSession` deliberately does not:
+
+- **Durable state and attempt binding.** Responses, attempt count and score live
+  in XBlock fields, and `max-attempts` is enforced server-side before pyqti is
+  touched at all. `ItemSession` gained a `prior_attempts` argument so a
+  per-request session still lands on the right `numAttempts` --- without it,
+  response processing that branches on the attempt number would silently see
+  every attempt as the first.
+- **A server-fixed shuffle order.** A per-learner, per-usage seed is derived once
+  and recorded, then handed to Citolab, which reorders deterministically from it.
+
+Presentation works exactly as it does everywhere else in this project: the block
+serves `presentation_xml()` output from one narrow handler and scores
+server-side. Citolab's response-processing module is never imported and
+`processResponse()` is never called, so there is no client-side scoring path to
+disagree with the server's.
+
+**Not yet done:** the block has not been run inside a real LMS. Score release is
+a flag (`show_score_immediately`) with no policy-gated release step behind it,
+and the `href`/`src` mediation gap below is more pressing under OLX authoring,
+where course assets make external references natural. See `TODO.md`.
+
+### A note on lxml
+
+lxml is a **required** dependency, and deliberately so.
+
+xsdata chooses its parser handler and serializer writer at import time based on
+whether lxml is importable, and the two pairs do not agree: the pure-Python
+writer reflows mixed content when indenting, lxml's keeps it inline. Left
+optional, the same item would serialize differently depending on what else
+happened to be installed in the environment --- and under `pyqti[xblock]` lxml
+is always installed anyway, because XBlock depends on it. Since
+`presentation_xml()` output is this project's security boundary and
+`tests/test_redaction.py` asserts over it as text, "it depends" is not an
+acceptable answer. Requiring lxml fixes the choice.
+
+This reverses an earlier decision, recorded below, to avoid the lxml bindings on
+memory grounds. The measured cost is about **5 MB** resident for a small item
+(49.0 MB to 54.6 MB, via `uv run overhead`), not the ~18 MB that decision
+assumed, and determinism is worth more than 5 MB. A consequence worth noting:
+real XSD validation now becomes possible, since the thing it needed is present.
 
 ## Serving items safely
 
@@ -169,7 +249,8 @@ dependency bump fails fast and loudly.
 
 Note also that xsdata does **not** validate against the schema.
 `fail_on_converter_warnings` and `fail_on_unknown_properties` catch most authoring
-mistakes, but real XSD validation would need lxml, which this project avoids (below).
+mistakes, but real XSD validation would need lxml --- which is now a dependency, so
+this has become a thing pyqti *could* do rather than a thing it cannot.
 
 ## Auto-generated Models
 
@@ -186,7 +267,10 @@ The source XSD file came from the [QTI 3.0 Specification Documents](https://www.
 
 I did look at [`xsdata-pydantic`](https://xsdata-pydantic.readthedocs.io/en/latest/), but the generated Pydantic models used a prohibitively large amount of memory during the parsing process for a small adaptive assessment item example (1.5 MB for the dataclasses version vs. 270 MB for the Pydantic models). My guess is that this is a memory leak bug somewhere rather than being something intrinsic to Pydantic, but I didn't want to try to track it down.
 
-I also intentionally don't use the optional lxml bindings, because the speedups aren't worth the memory overhead (about 18 MB for that same example data).
+I originally avoided the optional lxml bindings on the same memory grounds (I recorded
+about 18 MB for that example data). **That has since been reversed** --- lxml is now a
+required dependency, for determinism rather than for speed, and the measured cost is
+closer to 5 MB. See "A note on lxml" above.
 
 The total memory usage for the auto-generated dataclass models is around 38 MB. This includes a lot of W3C related models that are referenced by the QTI spec and are necessary for full validation (e.g. MathML). If further memory optimization is necessary, we might be able to relax the parsing rules and model generation around these, though I don't think that's good tradeoff overall.
 

@@ -73,6 +73,10 @@ permitted to produce item XML for a front end.
   enums; nothing should compare the generated enums directly.
 - `src/pyqti/demo/` — stdlib HTTP harness (`qti-demo`); JSON contract documented in
   `server.py`'s module docstring.
+- `src/pyqti/xblock/` — the **optional** Open edX integration, behind the `xblock`
+  extra. Nothing in core imports it, and nothing in it belongs in `_EXPORTS`. It
+  registers the OLX tag `qti-assessment-item`, so the block's OLX root *is* the QTI
+  element.
 - `examples/` — fixtures, including `adversarial-leaks.xml`, which carries a unique
   sentinel per known leak vector.
 
@@ -87,6 +91,11 @@ uv run qti-demo                                 # http://127.0.0.1:8000/
 uv run overhead                                 # model import/parse memory + timing
 ```
 
+The `xblock` extra is optional and must stay that way: `tests/xblock/` skips cleanly
+when it is absent (`tests/xblock/conftest.py` uses `importorskip`), and
+`tests/test_optional_xblock.py` asserts that a bare `import pyqti` never pulls in the
+framework. Check both configurations before claiming the suite is green.
+
 ## Conventions
 
 - Python 3.13+, `uv` for everything. Line length 88; ruff rules `E,F,I,UP,B`.
@@ -99,3 +108,9 @@ uv run overhead                                 # model import/parse memory + ti
   attribute leaks that `tests/test_redaction.py` exists to catch.
 - Security-relevant changes to redaction or delivery should be reflected in `TODO.md`
   if they close (or open) a gap listed there.
+- **lxml is a required dependency and must stay one.** xsdata picks its parser handler
+  and serializer writer from whether lxml is importable, and the two pairs disagree
+  about mixed content. Making lxml optional again would make `presentation_xml` output
+  vary with the environment — and that output is a security boundary tests assert over
+  as text. `tests/test_serialization.py::test_xsdata_uses_the_lxml_backed_pair` guards
+  this.

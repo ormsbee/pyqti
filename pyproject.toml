@@ -3,16 +3,42 @@ name = "pyqti"
 version = "0.1.0"
 description = "WIP Python implementation of QTI 3.0"
 readme = "README.md"
+license = "AGPL-3.0-only"
+license-files = ["LICENSE"]
 authors = [
     { name = "David Ormsbee", email = "dave@axim.org" }
 ]
-requires-python = ">=3.13"
+# 3.12, not 3.13: `requires-python` is per-distribution, so the XBlock extra
+# cannot declare a floor of its own. Open edX Verawood runs Python 3.12.13 and
+# XBlock itself requires >=3.12, so a 3.13 floor would fail the resolver check
+# before `pip install pyqti[xblock]` ever looked at the extra.
+requires-python = ">=3.12"
 dependencies = [
     # Upper bound is deliberate: pyqti depends on xsdata internals that are not part
     # of its documented public API -- XmlContext.build, XmlMeta and XmlVar.elements,
     # used by src/pyqti/qtitree.py to recover QTI element names, plus AnyElement's
     # mixed-content tail representation. See src/pyqti/_xsdata.py.
     "xsdata>=26.2,<27",
+    # Required, not optional. xsdata silently switches between its lxml-backed
+    # and pure-Python parser/serializer depending on whether lxml is importable,
+    # and the two disagree about mixed content when indenting. presentation_xml
+    # output is this project's security boundary and is asserted over as text, so
+    # it must not vary with what else happens to be installed. Installing lxml
+    # always is what makes that choice deterministic. Costs about 5 MB resident
+    # (49.0 -> 54.6 MB for a small item; measure with `uv run overhead`).
+    "lxml>=5",
+]
+
+[project.optional-dependencies]
+# Open edX integration. Deliberately optional: the core library has one
+# dependency and no opinion about Django. See src/pyqti/xblock/.
+xblock = [
+    "XBlock>=6,<7",
+    "web-fragments>=2,<3",
+    # Imported directly by pyqti.xblock.block for the raw handler's Response.
+    # (lxml is also imported there, for the OLX hooks, but it is a core
+    # dependency now -- see above.)
+    "webob>=1.8",
 ]
 
 [build-system]
@@ -25,11 +51,19 @@ dev = [
     "xsdata[cli]>=26.2",
     "pytest>=8",
     "mypy>=1.13",
+    # So the dev environment can exercise tests/xblock/. Installs without this
+    # group still run the rest of the suite; tests/xblock/ skips cleanly.
+    "pyqti[xblock]",
 ]
 
 [project.scripts]
 overhead = "pyqti.scripts.overhead:main"
 qti-demo = "pyqti.demo.server:main"
+
+# The entry point NAME is the OLX tag, so a course authors real QTI:
+# qti-assessment-item/<url_name>.xml holds a <qti-assessment-item> element.
+[project.entry-points."xblock.v1"]
+qti-assessment-item = "pyqti.xblock.block:QtiAssessmentItemBlock"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -45,7 +79,7 @@ extend-exclude = ["src/pyqti/models"]
 select = ["E", "F", "I", "UP", "B"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.12"
 files = ["src/pyqti", "tests"]
 exclude = "^src/pyqti/models/"
 
@@ -53,3 +87,9 @@ exclude = "^src/pyqti/models/"
 module = "pyqti.models.*"
 ignore_errors = true
 follow_imports = "skip"
+
+# These ship no stubs and are all optional dependencies, so type checking must
+# not require them to be installed.
+[[tool.mypy.overrides]]
+module = ["xblock.*", "web_fragments.*", "webob.*", "lxml.*"]
+ignore_missing_imports = true
