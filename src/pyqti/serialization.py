@@ -19,10 +19,10 @@ from pyqti._xsdata import CONTEXT, QTI_NAMESPACE, make_serializer_config
 def to_qti_xml(model: Any, *, indent: str | None = None) -> str:
     """Serialize a QTI model to XML in the QTI 3.0 default namespace.
 
-    ``indent`` is ``None`` by default because indenting reflows mixed content and
-    would alter candidate-visible prose --- see
-    :func:`pyqti._xsdata.make_serializer_config`. Pass ``indent="  "`` only for
-    output a human is going to read.
+    ``indent`` is ``None`` by default because indenting injects whitespace into
+    mixed content and so alters candidate-visible prose --- see
+    :func:`pyqti._xsdata.make_serializer_config` for exactly how much. Pass
+    ``indent="  "`` only for output a human is going to read.
     """
     serializer = XmlSerializer(
         config=make_serializer_config(indent=indent), context=CONTEXT

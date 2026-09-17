@@ -1,0 +1,51 @@
+/* Scoped to the block. Citolab declares its theming defaults on :host inside a
+ * shadow root, so a light-DOM rule on item-container itself is what overrides
+ * them -- a :root rule would lose. */
+.pyqti-block item-container {
+  --qti-border-color: #ccc;
+  --qti-bg: transparent;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.pyqti-block .pyqti-submit {
+  margin-top: 0.5rem;
+}
+
+.pyqti-result {
+  display: block;
+  margin-top: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #999;
+}
+
+.pyqti-result.ok {
+  border-color: #2e7d32;
+}
+
+.pyqti-result.warn {
+  border-color: #ef6c00;
+}
+
+.pyqti-result.error {
+  border-color: #c62828;
+}
+
+.pyqti-studio .pyqti-xml {
+  width: 100%;
+  min-height: 24rem;
+  font-family: monospace;
+  white-space: pre;
+}
+
+.pyqti-studio-note {
+  color: #555;
+  font-size: 0.9em;
+}
+
+.pyqti-studio-error {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-left: 3px solid #c62828;
+  white-space: pre-wrap;
+}

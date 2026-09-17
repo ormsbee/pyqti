@@ -125,12 +125,23 @@ corpus, not of the redaction.
 
 Also summarised in `README.md`; repeated here because each is also a safety property.
 
-- **Durable server-side session state and attempt binding.** `ItemSession` is in-memory
-  per request. Nothing enforces `max-attempts`, and nothing ties a submission to an
-  item the candidate was actually served.
-- **Server-fixed shuffle order.** Citolab reads a `seed` from
-  `qtiContext.QTI_CONTEXT.seed`, so pyqti should choose and record one per attempt.
-  Honour `fixed` on individual choices. This is also the fix for the ordering leak in §2.
+**The XBlock (`pyqti/xblock/`) closes the first two, for Open edX only.** The demo
+harness still has neither, and nothing below is fixed for library users who write
+their own delivery engine.
+
+- ~~**Durable server-side session state and attempt binding.**~~ Done in the XBlock:
+  responses, attempt count and score are `Scope.user_state` fields, and `max_attempts`
+  is enforced before pyqti is called. `ItemSession` gained `prior_attempts` so a
+  per-request session still sees the right `numAttempts`. Note the other built-ins are
+  **not** resumable --- `duration` restarts at zero and `completionStatus` at
+  `not_attempted` --- so response processing that reads either across attempts is still
+  silently wrong. Give them the same treatment, or refuse such items.
+- ~~**Server-fixed shuffle order.**~~ Done in the XBlock: a per-learner, per-usage seed
+  is derived once and recorded, then set on the `item-container` element. Still to do:
+  honour `fixed` on individual choices, and decide whether the seed should change per
+  *attempt* rather than being stable for the learner. **Unverified in a browser** ---
+  the seed is set as an element property because Citolab reads
+  `this.qtiContext?.QTI_CONTEXT?.seed`, read from source, never observed running.
 - **Template processing.** Run it server-side, then republish *only* the template
   variables referenced from the published body (`qti-printed-variable/@identifier`,
   `template-identifier`, `qti-template-inline`/`-block`, PCI `qti-template-variable`,
@@ -143,8 +154,6 @@ Also summarised in `README.md`; repeated here because each is also a safety prop
 
 ## 6. Smaller items
 
-- **`pyproject.toml` has no `license` field**, so the wheel metadata does not declare
-  AGPL-3.0 even though `LICENSE` is present (`022249e`).
 - **Browser verification of the Citolab render has never been done.** All presentation
   is client-side now, so no Python test can confirm the item displays. Needs
   `uv run qti-demo` plus network access for the CDN.
@@ -162,3 +171,46 @@ Also summarised in `README.md`; repeated here because each is also a safety prop
   allowlist of honoured `support` values is the eventual shape; unlike everything else
   in §4, an unsupported support type should be dropped silently rather than raised on —
   it is normal content, not an error.
+
+## 7. Now that lxml is a dependency
+
+Requiring lxml (for deterministic serialization --- see `README.md`) incidentally makes
+things possible that were previously ruled out.
+
+- **Real XSD validation.** `pyqti/_xsdata.py` has always noted that xsdata does not
+  validate against the schema and that genuine validation would need lxml. It is here
+  now. Validating on the authoring path, where `pyqti/xblock/block.py` already parses
+  and compiles, would catch a class of malformed item that
+  `fail_on_unknown_properties` does not.
+- **The `overhead` script's premise has shifted.** It exists to measure a memory budget
+  that was the reason for avoiding lxml. Measured cost of lxml is ~5 MB (49.0 -> 54.6 MB
+  for a small item), not the ~18 MB originally recorded; worth re-measuring on the
+  adaptive example the original figure came from.
+
+## 8. Open edX XBlock
+
+New with `pyqti/xblock/`. None of this is blocking for the demo or for library use.
+
+- **The block has never run in a real LMS.** Every test drives it through
+  `xblock.test.tools.TestRuntime`, which is not Studio and not the LMS. Unverified in
+  particular: whether edx-platform's OLX importer tolerates a **namespaced** root tag
+  when it resolves the block type (it may compare `node.tag` against the category
+  string, in which case `{ns}qti-assessment-item` would not match). Import and export
+  both accept either shape, so the fallback is to emit bare OLX --- a one-line change
+  to `add_xml_to_node` --- but which shape is correct is currently a guess.
+- **Score release is a flag, not a mechanism.** `show_score_immediately` gates whether
+  outcomes come back in the handler response; the grade is published either way. There
+  is no policy-gated release step. Check whether the platform's subsection
+  `show_correctness` setting should drive this instead of a block-level field.
+- **`href`/`src` mediation (§1) is more pressing here.** OLX authoring makes course
+  assets the natural way to include an image, and every one of those is an unmediated
+  second fetch that redaction never sees.
+- **Studio's editor is a textarea.** Deliberate --- `xblock.utils.studio_editable`
+  imports Django, and requiring Django would make `pyqti[xblock]` far heavier than the
+  library it wraps. If a real editing experience is wanted, that trade needs revisiting.
+- **`weight` is declared but not applied.** It is a platform-level multiplier consumed
+  downstream by the grading pipeline; confirm that is actually true of the current
+  edx-platform rather than assumed.
+- **No CI.** There is none in the repo at all, so nothing enforces that the suite stays
+  green both with and without the `xblock` extra. Both configurations were checked by
+  hand (`151 passed, 1 skipped` with the extra absent).
