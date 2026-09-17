@@ -123,6 +123,7 @@ def render_page(item: ItemDefinition) -> str:
 <link rel="stylesheet" href="/static/qti.css">
 <script type="module">
   import '{CITOLAB_CDN}/qti-item/+esm';
+  import '{CITOLAB_CDN}/qti-elements/+esm';
   import '{CITOLAB_CDN}/qti-interactions/+esm';
   // Citolab's response-processing module is intentionally not imported here:
   // pyqti does all scoring, server-side, against the unredacted item.

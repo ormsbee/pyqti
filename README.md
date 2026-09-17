@@ -6,8 +6,6 @@ The first goal is going to be to get simple multiple choice problems to render.
 
 ## High Level Approach
 
-Web components for the qti-item-body, Python backend for everything else.
-
 **pyqti does not render.** Presentation is delegated to existing QTI web components
 in the browser --- currently [Citolab
 `@citolab/qti-components`](https://github.com/Citolab/qti-components), which already

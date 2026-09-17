@@ -64,6 +64,10 @@ def test_item_page_hosts_the_web_components(base_url):
 
     assert "cdn.jsdelivr.net/npm/@citolab/qti-components@" in body
     assert "/qti-item/+esm" in body
+    # qti-item only defines the qti-item/item-container wrappers. The structural
+    # elements (qti-assessment-item, qti-item-body, ...) come from qti-elements;
+    # without it the browser fetches the XML and renders nothing.
+    assert "/qti-elements/+esm" in body
     assert "/qti-interactions/+esm" in body
     assert '<item-container item-url="/items/firstexample/item.xml">' in body, (
         "the renderer needs a URL to fetch the item from"
