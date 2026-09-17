@@ -182,3 +182,36 @@ def test_undeclared_variable_reference_raises():
     session = ItemSession(load_assessment_item(xml))
     with pytest.raises(QtiStructureError, match="GHOST"):
         session.process_responses()
+
+
+def test_prior_attempts_resumes_the_attempt_counter(first_example):
+    """A delivery engine holding durable state elsewhere resumes mid-history.
+
+    ``ItemSession`` is per-request; the LMS (or any other engine) owns the real
+    attempt count. Without this, every attempt would look like the first.
+    """
+    session = ItemSession(first_example, prior_attempts=3)
+    assert session.num_attempts == 3
+
+    session.submit({"RESPONSE": "A"})
+    assert session.num_attempts == 4
+
+
+def test_prior_attempts_defaults_to_a_fresh_session(first_example):
+    session = ItemSession(first_example)
+    assert session.num_attempts == 0
+    session.submit({"RESPONSE": "A"})
+    assert session.num_attempts == 1
+
+
+def test_reset_returns_to_the_resumed_count_not_zero(first_example):
+    """``reset()`` is pre-*attempt*, not pre-*history*."""
+    session = ItemSession(first_example, prior_attempts=2)
+    session.submit({"RESPONSE": "A"})
+    session.reset()
+    assert session.num_attempts == 2
+
+
+def test_negative_prior_attempts_is_rejected(first_example):
+    with pytest.raises(ValueError, match="must not be negative"):
+        ItemSession(first_example, prior_attempts=-1)

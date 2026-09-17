@@ -57,12 +57,34 @@ class ResponseValidity:
 class ItemSession:
     """Holds the runtime state of one candidate's interaction with one item."""
 
-    def __init__(self, item: ItemDefinition | QtiAssessmentItem):
+    def __init__(
+        self,
+        item: ItemDefinition | QtiAssessmentItem,
+        *,
+        prior_attempts: int = 0,
+    ):
+        """Build a session, optionally resuming a candidate's attempt history.
+
+        ``prior_attempts`` is the number of attempts this candidate has already
+        taken, so that ``submit()`` lands on the correct ``numAttempts``. A
+        delivery engine that holds durable state elsewhere (an Open edX XBlock,
+        say) constructs a fresh session per request; without this, every attempt
+        would look like the first, and any response processing that branches on
+        ``numAttempts`` would be silently mis-graded.
+
+        Note that the other built-ins are *not* resumable: ``duration`` restarts
+        at zero and ``completionStatus`` at ``not_attempted``. Response
+        processing that reads either across attempts is not yet supported.
+        """
+        if prior_attempts < 0:
+            raise ValueError(f"prior_attempts must not be negative: {prior_attempts}")
+
         self.item = (
             item
             if isinstance(item, ItemDefinition)
             else ItemDefinition.from_model(item)
         )
+        self.prior_attempts = prior_attempts
 
         # Compiled once. Compilation resolves the response-processing template and
         # rejects unsupported constructs, so problems surface at construction time.
@@ -88,7 +110,7 @@ class ItemSession:
         self.reset_outcomes()
         self.builtins = {
             COMPLETION_STATUS: NOT_ATTEMPTED,
-            NUM_ATTEMPTS: 0,
+            NUM_ATTEMPTS: self.prior_attempts,
             DURATION: 0.0,
         }
 
