@@ -1,4 +1,50 @@
 /* Just enough styling to make the demo legible. */
+
+:root {
+  color-scheme: light dark;
+  --fg: #1a1a1a;
+  --bg: #fdfdfc;
+  --muted: #6b6b6b;
+  --line: #d8d8d4;
+  --accent: #2d5f8a;
+  --ok-bg: #e6f4ea;
+  --ok-fg: #14532d;
+  --warn-bg: #fdf3d7;
+  --warn-fg: #6b4b00;
+  --err-bg: #fdeaea;
+  --err-fg: #7f1d1d;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fg: #e8e8e6;
+    --bg: #1b1b1a;
+    --muted: #a0a09c;
+    --line: #3a3a38;
+    --accent: #8ab4d8;
+    --ok-bg: #14311f;
+    --ok-fg: #b7e4c7;
+    --warn-bg: #3a2f10;
+    --warn-fg: #f2d98c;
+    --err-bg: #3a1717;
+    --err-fg: #f5b5b5;
+  }
+
+  /* Citolab's choices are white by default, which would show our light text on a
+     white box. These are its documented theming hooks. They must be set on
+     item-container, not :root: Citolab bundles its stylesheet into that element's
+     shadow root and declares the defaults on :host, which beats anything inherited
+     from further up. A light-DOM rule on the host element outranks the shadow
+     tree's :host. Values are Citolab's own dark palette plus our line colour. */
+  item-container {
+    --qti-bg: #262624;
+    --qti-hover-bg: #2e2e2c;
+    --qti-bg-active: #1f2937;
+    --qti-border-active: #64748b;
+    --qti-border-color: var(--line);
+  }
+}
+
 body {
   margin: 0;
   background: var(--bg);

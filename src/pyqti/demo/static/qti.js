@@ -29,12 +29,23 @@ document.addEventListener(CONTEXT_UPDATED, (event) => {
   latestVariables = event.detail?.itemContext?.variables ?? [];
 });
 
+// item-container renders the item inside its own (open) shadow root, so a plain
+// document.querySelector never sees it. Look there first, then fall back to the
+// light DOM for a page that inlines the item instead of fetching it.
+function findAssessmentItem() {
+  const container = document.querySelector("item-container");
+  return (
+    container?.shadowRoot?.querySelector("qti-assessment-item") ??
+    document.querySelector("qti-assessment-item")
+  );
+}
+
 function collectResponses() {
   const responses = {};
 
   // Prefer reading straight off the element: it is authoritative at submit time,
   // whereas the event only tells us about the last change.
-  const item = document.querySelector("qti-assessment-item");
+  const item = findAssessmentItem();
   const variables = item?.variables ?? latestVariables;
 
   for (const variable of variables) {
