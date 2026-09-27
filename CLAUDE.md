@@ -77,6 +77,9 @@ permitted to produce item XML for a front end.
   extra. Nothing in core imports it, and nothing in it belongs in `_EXPORTS`. It
   registers the OLX tag `qti-assessment-item`, so the block's OLX root *is* the QTI
   element.
+- `tutor_plugin/` — a separate distribution (`tutor-contrib-pyqti`): a Tutor plugin
+  for `tutor dev`. It installs into Tutor's virtualenv, not the Open edX image, so its
+  `requires-python` follows Tutor (`>=3.10`), not this project.
 - `examples/` — fixtures, including `adversarial-leaks.xml`, which carries a unique
   sentinel per known leak vector.
 
