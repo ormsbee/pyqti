@@ -136,6 +136,27 @@ a flag (`show_score_immediately`) with no policy-gated release step behind it,
 and the `href`/`src` mediation gap below is more pressing under OLX authoring,
 where course assets make external references natural. See `TODO.md`.
 
+### Developing in Tutor
+
+`tutor_plugin/` is a small [Tutor](https://docs.tutor.edly.io/) plugin, packaged
+separately as `tutor-contrib-pyqti` because it installs into Tutor's own
+virtualenv rather than the Open edX image. It bind-mounts this checkout into the
+LMS and Studio containers and installs it with the `xblock` extra in the
+`openedx-dev` image:
+
+```sh
+pip install -e tutor_plugin      # into the environment tutor runs from
+tutor plugins enable pyqti
+tutor mounts add /path/to/pyqti
+tutor images build openedx-dev
+tutor dev start -d
+```
+
+Edits to pyqti's Python source then show up without a rebuild; changes to
+`pyproject.toml` need `tutor images build openedx-dev` again. Each course still
+has to list `qti-assessment-item` in **Advanced Module List** under Advanced
+Settings.
+
 ### A note on lxml
 
 lxml is a **required** dependency, and deliberately so.

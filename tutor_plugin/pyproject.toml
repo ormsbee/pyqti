@@ -1,0 +1,19 @@
+[project]
+name = "tutor-contrib-pyqti"
+version = "0.1.0"
+description = "Tutor plugin for developing the pyqti XBlock in a Tutor dev environment"
+license = "AGPL-3.0-only"
+# Not pyqti's >=3.12: this installs into Tutor's own virtualenv, not the Open edX
+# image, so it follows Tutor's floor.
+requires-python = ">=3.10"
+dependencies = ["tutor>=21"]
+
+[project.entry-points."tutor.plugin.v1"]
+pyqti = "tutorpyqti.plugin"
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "tutorpyqti"
