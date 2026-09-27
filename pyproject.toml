@@ -34,7 +34,7 @@ dependencies = [
 # dependency and no opinion about Django. See src/pyqti/xblock/.
 xblock = [
     "XBlock>=6,<7",
-    "web-fragments>=2,<3",
+    "web-fragments>=2,<5",
     # Imported directly by pyqti.xblock.block for the raw handler's Response.
     # (lxml is also imported there, for the OLX hooks, but it is a core
     # dependency now -- see above.)

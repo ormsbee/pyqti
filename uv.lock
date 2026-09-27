@@ -561,7 +561,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "lxml", specifier = ">=5" },
-    { name = "web-fragments", marker = "extra == 'xblock'", specifier = ">=2,<3" },
+    { name = "web-fragments", marker = "extra == 'xblock'", specifier = ">=2,<5" },
     { name = "webob", marker = "extra == 'xblock'", specifier = ">=1.8" },
     { name = "xblock", marker = "extra == 'xblock'", specifier = ">=6,<7" },
     { name = "xsdata", specifier = ">=26.2,<27" },
@@ -785,11 +785,11 @@ wheels = [
 
 [[package]]
 name = "web-fragments"
-version = "2.2.0"
+version = "4.0.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/82/49/d30503bd1ab204b72b25e0a530f1cfe76c62d865d0cf17d5737f7d068c38/web-fragments-2.2.0.tar.gz", hash = "sha256:9a6a448c5a6dcab13c3d0f3e89db479783445d8b4af5bdc360074320f2b90ba3", size = 15069, upload-time = "2024-04-02T19:14:02.333Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a5/1c/938b2e2a7908937361dcaaeb7afe17ca0f1ca9e68c335c72820b772c5b24/web_fragments-4.0.0.tar.gz", hash = "sha256:e82488beb4e8666b9e37a10a81258142f404f4e1964b31d3010154896832f90b", size = 15590, upload-time = "2026-03-10T14:30:43.685Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/39/62/00a80bff0ca118a5e487326e626252b2362d2bae2e9e77b9e7de02e83ed2/web_fragments-2.2.0-py2.py3-none-any.whl", hash = "sha256:615a9b8e7981f21d60a00a41d4eebb1c48ad856864d5e229a0a004342e6a244f", size = 15485, upload-time = "2024-04-02T19:14:00.597Z" },
+    { url = "https://files.pythonhosted.org/packages/9d/f8/28aa823f4a618481908bc3bb815e5961cc6e79682e7ceb568bcc4d6f10f4/web_fragments-4.0.0-py2.py3-none-any.whl", hash = "sha256:0d5f59c63b2ac5ee95f76f5904c2f20d0e83d6a1425680fcc676485b13f85d32", size = 15580, upload-time = "2026-03-10T14:30:41.406Z" },
 ]
 
 [[package]]
