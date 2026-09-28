@@ -6,10 +6,10 @@ from xblock.core import XBlock
 
 from pyqti.xblock.block import QtiAssessmentItemBlock
 
-TAG = "qti-assessment-item"
+TAG = "openedx-qti"
 
 
-def test_entry_point_is_registered_under_the_qti_tag():
+def test_entry_point_is_registered_under_the_olx_tag():
     """The entry point NAME is the OLX tag, which is why it is spelled this way."""
     registered = {ep.name: ep for ep in entry_points(group="xblock.v1")}
     assert TAG in registered, f"xblock.v1 entry points: {sorted(registered)}"

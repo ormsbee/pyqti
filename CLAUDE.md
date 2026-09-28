@@ -75,8 +75,9 @@ permitted to produce item XML for a front end.
   `server.py`'s module docstring.
 - `src/pyqti/xblock/` — the **optional** Open edX integration, behind the `xblock`
   extra. Nothing in core imports it, and nothing in it belongs in `_EXPORTS`. It
-  registers the OLX tag `qti-assessment-item`, so the block's OLX root *is* the QTI
-  element.
+  registers the OLX tag `openedx-qti`: OLX attributes go on that element and the
+  `<qti-assessment-item>` is its only child, never mixed. Course export writes each
+  block to `openedx-qti/{url_name}.xml` and leaves a pointer in the parent.
 - `tutor_plugin/` — a separate distribution (`tutor-contrib-pyqti`): a Tutor plugin
   for `tutor dev`. It installs into Tutor's virtualenv, not the Open edX image, so its
   `requires-python` follows Tutor (`>=3.10`), not this project.

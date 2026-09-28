@@ -9,6 +9,7 @@ import pytest
 pytest.importorskip("xblock", reason="requires the optional 'xblock' extra")
 pytest.importorskip("web_fragments", reason="requires the optional 'xblock' extra")
 
+from lxml import etree  # noqa: E402
 from xblock.fields import ScopeIds  # noqa: E402
 from xblock.runtime import DictKeyValueStore, KvsFieldData  # noqa: E402
 from xblock.test.tools import TestRuntime  # noqa: E402
@@ -45,13 +46,30 @@ def build_block(qti_xml=None, runtime=None, **fields):
     runtime = runtime or build_runtime()
     block = QtiAssessmentItemBlock(
         runtime,
-        scope_ids=ScopeIds("learner", "qti-assessment-item", "def-1", "usage-1"),
+        scope_ids=ScopeIds("learner", "openedx-qti", "def-1", "usage-1"),
     )
     if qti_xml is not None:
         block._store_qti(qti_xml)
     for name, value in fields.items():
         setattr(block, name, value)
     return block
+
+
+def parse_olx(node, runtime=None, block_class=QtiAssessmentItemBlock):
+    """Import an ``<openedx-qti>`` node (or its text) through ``parse_xml``."""
+    if isinstance(node, str):
+        node = etree.fromstring(node.encode("utf-8"))
+    runtime = runtime or build_runtime()
+    keys = runtime.id_generator.create_definition("openedx-qti")
+    scope_ids = ScopeIds("learner", "openedx-qti", keys, "usage-1")
+    return block_class.parse_xml(node, runtime, scope_ids)
+
+
+def exported(block, url_name="u1"):
+    """Export as edx-platform does: it names the node before handing it over."""
+    node = etree.Element("openedx-qti", url_name=url_name)
+    block.add_xml_to_node(node)
+    return node
 
 
 @pytest.fixture

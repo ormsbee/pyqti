@@ -92,20 +92,28 @@ dependency and no opinion about Django.
 pip install pyqti[xblock]
 ```
 
-The block registers the OLX tag `qti-assessment-item`, which means a course
-authors **real QTI** rather than QTI wrapped in something else:
+The block registers the OLX tag `openedx-qti`. The platform's attributes
+(`url_name`, `display_name`, `max_attempts`, ...) go on that element, and its
+only child is the item as **real QTI**, so the two vocabularies never share an
+element. Course export gives each block a file of its own, as the built-in
+blocks do, and leaves a pointer in the unit:
 
 ```
 course/
-  qti-assessment-item/
-    luggage.xml        <qti-assessment-item xmlns="..." identifier="luggage" ...>
+  vertical/
+    unit1.xml      <vertical ...><openedx-qti url_name="luggage"/></vertical>
+  openedx-qti/
+    luggage.xml    <openedx-qti display_name="Unattended Luggage" max_attempts="2">
+                     <qti-assessment-item xmlns="..." identifier="luggage" ...>
 ```
 
-`parse_xml` reads that subtree as QTI content (never as child XBlocks), and
-`add_xml_to_node` writes it back out, so import and export round-trip. The QTI
-namespace may be declared or left off --- an untouched QTI file and
-namespace-free OLX are both accepted, and export returns whichever shape the
-author wrote.
+`parse_xml` follows the pointer and reads the child as QTI content (never as
+child XBlocks); `add_xml_to_node` writes both back out, so import and export
+round-trip. The QTI namespace may be declared or left off --- an untouched QTI
+item and namespace-free OLX are both accepted, and export returns whichever
+shape the author wrote. Where edx-platform needs one self-contained node
+instead (content libraries, copy and paste), it turns the file off through
+`export_to_file()` and gets the same `<openedx-qti>` element inline.
 
 Every authoring route --- OLX import and the Studio editor alike --- goes through
 one validated store, which parses the item, compiles its response processing and
@@ -154,8 +162,7 @@ tutor dev start -d
 
 Edits to pyqti's Python source then show up without a rebuild; changes to
 `pyproject.toml` need `tutor images build openedx-dev` again. Each course still
-has to list `qti-assessment-item` in **Advanced Module List** under Advanced
-Settings.
+has to list `openedx-qti` in **Advanced Module List** under Advanced Settings.
 
 ### A note on lxml
 
