@@ -6,14 +6,13 @@ The first goal is going to be to get simple multiple choice problems to render.
 
 ## High Level Approach
 
-**pyqti does not render.** Presentation is delegated to existing QTI web components
-in the browser --- currently [Citolab
+**pyqti does not render directly.** Presentation is delegated to existing QTI
+web components in the browser --- currently [Citolab
 `@citolab/qti-components`](https://github.com/Citolab/qti-components), which already
 implements the QTI presentation vocabulary and is tested against 1EdTech conformance
 items. Those components consume QTI XML directly, so pyqti's job on the presentation
-side is to publish a **presentation-safe** copy of the item and keep the
-authoritative one to itself. See "Serving items safely" below --- this is the part
-that matters, because QTI XML contains the answer.
+side is to publish a **presentation-safe** copy of the item that doesn't give away
+the answers. See "Serving items safely" below.
 
 ## Status
 
@@ -62,8 +61,7 @@ uv run ruff check && uv run mypy
 uv run overhead          # model import / parse memory and timing
 ```
 
-Python 3.12 or newer. The floor is set by Open edX rather than by anything pyqti
-uses --- see "Open edX" below.
+Python 3.12 or newer.
 
 ### Library use
 
@@ -139,11 +137,6 @@ server-side. Citolab's response-processing module is never imported and
 `processResponse()` is never called, so there is no client-side scoring path to
 disagree with the server's.
 
-**Not yet done:** the block has not been run inside a real LMS. Score release is
-a flag (`show_score_immediately`) with no policy-gated release step behind it,
-and the `href`/`src` mediation gap below is more pressing under OLX authoring,
-where course assets make external references natural. See `TODO.md`.
-
 ### Developing in Tutor
 
 `tutor_plugin/` is a small [Tutor](https://docs.tutor.edly.io/) plugin, packaged
@@ -166,23 +159,14 @@ has to list `openedx-qti` in **Advanced Module List** under Advanced Settings.
 
 ### A note on lxml
 
-lxml is a **required** dependency, and deliberately so.
+lxml is deliberately required.
 
 xsdata chooses its parser handler and serializer writer at import time based on
 whether lxml is importable, and the two pairs do not agree: the pure-Python
 writer reflows mixed content when indenting, lxml's keeps it inline. Left
 optional, the same item would serialize differently depending on what else
 happened to be installed in the environment --- and under `pyqti[xblock]` lxml
-is always installed anyway, because XBlock depends on it. Since
-`presentation_xml()` output is this project's security boundary and
-`tests/test_redaction.py` asserts over it as text, "it depends" is not an
-acceptable answer. Requiring lxml fixes the choice.
-
-This reverses an earlier decision, recorded below, to avoid the lxml bindings on
-memory grounds. The measured cost is about **5 MB** resident for a small item
-(49.0 MB to 54.6 MB, via `uv run overhead`), not the ~18 MB that decision
-assumed, and determinism is worth more than 5 MB. A consequence worth noting:
-real XSD validation now becomes possible, since the thing it needed is present.
+is always installed anyway, because XBlock depends on it.
 
 ## Serving items safely
 
@@ -282,27 +266,37 @@ this has become a thing pyqti *could* do rather than a thing it cannot.
 
 ## Auto-generated Models
 
-**DO NOT MANUALLY EDIT THE MODELS IN pyqti.models!** The models were automatically generated using [`xsdata`](https://xsdata.readthedocs.io/en/latest/), specifically using the invocation:
+**DO NOT MANUALLY EDIT THE MODELS IN pyqti.models!** The models were
+automatically generated using
+[`xsdata`](https://xsdata.readthedocs.io/en/latest/), specifically using the
+invocation:
 
 `xsdata generate imsqti_asiv3p0_v1p0.xsd --structure-style namespace-clusters --package pyqti.models --compound-fields`
 
-Note that this invocation predates the move to a `src/` layout, so it needs adjusting
-so output lands in `src/pyqti/models` before the next regeneration. The
-`--compound-fields` flag in particular is load-bearing: without it the generated field
-names change wholesale and `pyqti/qtitree.py` stops working.
+Changing the way in which these models are generated may cause `pyqti/qtitree.py`
+to stop working.
 
-The source XSD file came from the [QTI 3.0 Specification Documents](https://www.1edtech.org/standards/qti/index#QTI3) section of 1EdTech's site, specifically the [zip file](https://www.imsglobal.org/sites/default/files/spec/qti/v3/xsdset/qtiv3p0_xsdsetv1p0.zip) containing all QTI 3.0 schemas.
+The source XSD file came from the [QTI 3.0 Specification
+Documents](https://www.1edtech.org/standards/qti/index#QTI3) section of
+1EdTech's site, specifically the [zip
+file](https://www.imsglobal.org/sites/default/files/spec/qti/v3/xsdset/qtiv3p0_xsdsetv1p0.zip)
+containing all QTI 3.0 schemas.
 
-I did look at [`xsdata-pydantic`](https://xsdata-pydantic.readthedocs.io/en/latest/), but the generated Pydantic models used a prohibitively large amount of memory during the parsing process for a small adaptive assessment item example (1.5 MB for the dataclasses version vs. 270 MB for the Pydantic models). My guess is that this is a memory leak bug somewhere rather than being something intrinsic to Pydantic, but I didn't want to try to track it down.
+I (human Dave, not Claude) did look at
+[`xsdata-pydantic`](https://xsdata-pydantic.readthedocs.io/en/latest/), but the
+generated Pydantic models used a prohibitively large amount of memory during the
+parsing process for a small adaptive assessment item example (1.5 MB for the
+dataclasses version vs. 270 MB for the Pydantic models). My guess is that this
+is a memory leak bug somewhere rather than being something intrinsic to
+Pydantic, but I didn't want to try to track it down.
 
 I originally avoided the optional lxml bindings on the same memory grounds (I recorded
 about 18 MB for that example data). **That has since been reversed** --- lxml is now a
 required dependency, for determinism rather than for speed, and the measured cost is
 closer to 5 MB. See "A note on lxml" above.
 
-The total memory usage for the auto-generated dataclass models is around 38 MB. This includes a lot of W3C related models that are referenced by the QTI spec and are necessary for full validation (e.g. MathML). If further memory optimization is necessary, we might be able to relax the parsing rules and model generation around these, though I don't think that's good tradeoff overall.
-
-Because that budget matters, `pyqti/__init__.py` resolves its exports lazily: a bare
-`import pyqti` does not pull in `pyqti.models`. Beware that `resource.ru_maxrss` is
-kilobytes on Linux and bytes on macOS --- `pyqti/scripts/overhead.py` now scales for
-both, so its figures no longer disagree by 1000x depending on the platform.
+The total memory usage for the auto-generated dataclass models is around 38 MB.
+This includes a lot of W3C related models that are referenced by the QTI spec
+and are necessary for full validation (e.g. MathML). If further memory
+optimization is necessary, we might be able to relax the parsing rules and model
+generation around these, though I don't think that's good tradeoff overall.
