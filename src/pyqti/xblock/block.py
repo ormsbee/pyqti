@@ -1,11 +1,20 @@
 """An XBlock that delivers and grades a single QTI 3.0 assessment item.
 
-The block registers the OLX tag ``qti-assessment-item``, so a course authors
-real QTI rather than QTI wrapped in something else::
+The block registers the OLX tag ``openedx-qti``. Its attributes are the
+platform's (``url_name``, ``display_name``, ``max_attempts``, ...) and its only
+child is the item, as real QTI, so the two vocabularies never share an
+element::
 
-    course/qti-assessment-item/luggage.xml
-        <qti-assessment-item xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
-                             identifier="luggage" title="Unattended Luggage" ...>
+    <openedx-qti display_name="Unattended Luggage" max_attempts="2">
+      <qti-assessment-item xmlns="http://www.imsglobal.org/xsd/imsqtiasi_v3p0"
+                           identifier="luggage" title="Unattended Luggage" ...>
+        ...
+      </qti-assessment-item>
+    </openedx-qti>
+
+Course export writes that element to ``openedx-qti/{url_name}.xml`` and leaves
+only ``<openedx-qti url_name="..."/>`` in the parent, as the platform's
+built-in blocks do; see :meth:`QtiAssessmentItemBlock.export_to_file`.
 
 **pyqti does not render, and neither does this block.** Presentation is
 delegated to Citolab's QTI web components in the browser; the block serves them
@@ -74,8 +83,26 @@ DEFAULT_COMPONENTS_URL = (
     f"https://cdn.jsdelivr.net/npm/@citolab/qti-components@{CITOLAB_VERSION}"
 )
 
+#: The OLX tag, which is the ``xblock.v1`` entry point's name.
+OLX_TAG = "openedx-qti"
 QTI_ROOT = "qti-assessment-item"
 _QUALIFIED_ROOT = f"{{{QTI_NAMESPACE}}}{QTI_ROOT}"
+#: Put on the OLX node by the runtime; not fields of this block.
+_RUNTIME_ATTRIBUTES = frozenset({"url_name", "xblock-family"})
+
+
+def _definition_path(url_name: str) -> str:
+    """Where course export keeps a block's definition, relative to the course."""
+    return f"{OLX_TAG}/{url_name}.xml"
+
+
+def _is_pointer(node: Any) -> bool:
+    """``<openedx-qti url_name="..."/>``: a name and nothing else."""
+    return (
+        set(node.attrib) == {"url_name"}
+        and len(node) == 0
+        and not (node.text or "").strip()
+    )
 
 
 def _asset(name: str) -> str:
@@ -113,6 +140,25 @@ def _qualify(node: Any) -> Any:
         if isinstance(element.tag, str) and not element.tag.startswith("{"):
             element.tag = f"{{{QTI_NAMESPACE}}}{element.tag}"
     return qualified
+
+
+def _qti_child(node: Any) -> Any:
+    """The ``<qti-assessment-item>`` inside ``<openedx-qti>``, or None if empty.
+
+    A block with no item yet is legitimate --- it is what Studio creates --- but
+    anything else in the wrapper is refused rather than dropped.
+    """
+    stray = (node.text or "") + "".join(child.tail or "" for child in node)
+    elements = [child for child in node if isinstance(child.tag, str)]
+    if stray.strip() or len(elements) > 1 or (
+        elements and _localname(elements[0].tag) != QTI_ROOT
+    ):
+        found = ", ".join(f"<{_localname(child.tag)}>" for child in elements)
+        raise QtiStructureError(
+            f"<{OLX_TAG}> must contain exactly one <{QTI_ROOT}> and nothing "
+            f"else; found {found or 'text'}"
+        )
+    return elements[0] if elements else None
 
 
 def _qti_source(node: Any) -> tuple[str, bool]:
@@ -266,37 +312,128 @@ class QtiAssessmentItemBlock(ScorableXBlockMixin, XBlock):
         self.qti_xml = qti_xml
         self.qti_namespace_declared = namespace_declared
 
+        self.display_name = item.title
+
     @classmethod
     def parse_xml(cls, node, runtime, keys):
-        """Read an OLX node whose root *is* the QTI item."""
+        """Read ``<openedx-qti>``: settings from its attributes, QTI from its child."""
         block = runtime.construct_xblock_from_class(cls, keys)
 
-        block._store_qti(etree.tostring(node, encoding="unicode", with_tail=False))
+        node = cls._follow_pointer(node, runtime)
+        qti = _qti_child(node)
+        if qti is not None:
+            block._store_qti(etree.tostring(qti, encoding="unicode", with_tail=False))
 
-        title = node.get("title") or node.get("identifier")
-        if title:
-            block.display_name = title
+        # After _store_qti, which defaults display_name to the item's title, so
+        # that an explicit display_name attribute wins.
+        for name, value in node.attrib.items():
+            if name in _RUNTIME_ATTRIBUTES:
+                continue
+            field = cls.fields.get(name)
+            if field is None or field.scope != Scope.settings:
+                # Ignored with a warning, as XBlock core does. Content and
+                # learner state are never set this way: qti_xml in particular
+                # must only ever arrive through _store_qti.
+                log.warning(
+                    "pyqti: ignoring <%s> attribute %r, which is not a setting",
+                    OLX_TAG,
+                    name,
+                )
+                continue
+            setattr(block, name, field.from_string(value))
         return block
 
+    @classmethod
+    def _follow_pointer(cls, node, runtime):
+        """Swap a course export's pointer for the definition file it names.
+
+        Only when that file exists. The same shape is also an inline block with
+        no item and no settings yet, and outside course import there is no such
+        file: the split modulestore's ``resources_fs`` is a per-course scratch
+        directory, the content library runtime's an empty stand-in.
+        """
+        if not _is_pointer(node):
+            return node
+        resources_fs = getattr(runtime, "resources_fs", None)
+        path = _definition_path(node.get("url_name"))
+        if resources_fs is None or not resources_fs.exists(path):
+            if resources_fs is not None:
+                log.warning("pyqti: no %s; importing an empty block", path)
+            return node
+
+        with resources_fs.open(path, "rb") as definition_file:
+            # Our parser, not the platform's: it strips blank text, and
+            # whitespace between inline elements in an item body renders.
+            definition = etree.fromstring(definition_file.read())
+        if definition.tag != OLX_TAG:
+            raise QtiStructureError(
+                f"{path}: expected a <{OLX_TAG}> root element, "
+                f"got <{_localname(definition.tag)}>"
+            )
+        return definition
+
+    def _definition(self) -> Any:
+        """This block as an ``<openedx-qti>`` element.
+
+        Every explicitly set settings field becomes an attribute, not just this
+        block's own: the platform mixes in fields such as
+        ``visible_to_staff_only`` and ``group_access``, and an export that
+        dropped those would silently loosen access on re-import. The QTI goes
+        back out in the shape the author wrote it.
+        """
+        definition = etree.Element(OLX_TAG)
+        for name, field in sorted(self.fields.items()):
+            if field.scope != Scope.settings or not field.is_set_on(self):
+                continue
+            value = field.to_string(field.read_from(self))
+            if value is not None:
+                definition.set(name, value)
+
+        if self.qti_xml:
+            source = etree.fromstring(self.qti_xml.encode("utf-8"))
+            if not self.qti_namespace_declared:
+                for element in source.iter():
+                    if isinstance(element.tag, str):
+                        element.tag = _localname(element.tag)
+                etree.cleanup_namespaces(source)
+            definition.append(source)
+        return definition
+
+    def export_to_file(self) -> bool:
+        """Whether course export writes this block to a file of its own.
+
+        It does, as the platform's built-in blocks do. edx-platform's library
+        and clipboard serializer needs one self-contained node instead, and
+        gets it by overriding this on the instance to return False.
+        """
+        return True
+
     def add_xml_to_node(self, node) -> None:
-        """Emit the authored QTI as the node itself, so export round-trips."""
-        if not self.qti_xml:
-            node.tag = QTI_ROOT
+        """Export as ``<openedx-qti>``, to its own file when the runtime allows.
+
+        That takes a filesystem and a ``url_name``, which edx-platform's course
+        export provides and other runtimes do not; without them, and whenever
+        :meth:`export_to_file` says no, the node is written inline.
+        """
+        definition = self._definition()
+        export_fs = getattr(self.runtime, "export_fs", None)
+        url_name = node.get("url_name")
+        if self.export_to_file() and export_fs is not None and url_name:
+            export_fs.makedirs(OLX_TAG, recreate=True)
+            with export_fs.open(_definition_path(url_name), "wb") as definition_file:
+                # Not pretty-printed, unlike the platform's own files: indenting
+                # an item with no whitespace of its own (generated or minified
+                # QTI) puts some between inline elements, and that renders.
+                definition_file.write(
+                    etree.tostring(definition, encoding="utf-8", xml_declaration=True)
+                )
+                definition_file.write(b"\n")
+            node.tag = OLX_TAG
             return
 
-        source = etree.fromstring(self.qti_xml.encode("utf-8"))
-        if not self.qti_namespace_declared:
-            for element in source.iter():
-                if isinstance(element.tag, str):
-                    element.tag = _localname(element.tag)
-            etree.cleanup_namespaces(source)
-
-        node.tag = source.tag
-        node.text = source.text
-        node.attrib.clear()
-        node.attrib.update(source.attrib)
-        for child in source:
-            node.append(child)
+        node.tag = definition.tag
+        node.attrib.update(definition.attrib)
+        node.extend(definition)
 
     # ------------------------------------------------------------------ #
     # Item access
@@ -375,8 +512,8 @@ class QtiAssessmentItemBlock(ScorableXBlockMixin, XBlock):
             '    <textarea class="pyqti-xml" spellcheck="false">'
             f"{_escape(self.qti_xml)}</textarea>"
             "  </label>"
-            '  <p class="pyqti-studio-note">The item is validated on save: '
-            "unsupported QTI is rejected here rather than at exam time.</p>"
+            '  <p class="pyqti-studio-note">Edit &lt;qti-assessment-item&gt; XML here. '
+            'The item is validated on save.</p>'
             '  <div class="pyqti-studio-error" hidden></div>'
             '  <button class="pyqti-studio-save">Save</button>'
             "</div>"

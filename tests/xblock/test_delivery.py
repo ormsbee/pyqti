@@ -221,7 +221,7 @@ def test_shuffle_seed_differs_per_usage(item):
         runtime = build_runtime()
         other = QtiAssessmentItemBlock(
             runtime,
-            scope_ids=ScopeIds("learner", "qti-assessment-item", "def-1", usage),
+            scope_ids=ScopeIds("learner", "openedx-qti", "def-1", usage),
         )
         other._store_qti(item)
         seeds.add(other._seed())

@@ -60,10 +60,10 @@ dev = [
 overhead = "pyqti.scripts.overhead:main"
 qti-demo = "pyqti.demo.server:main"
 
-# The entry point NAME is the OLX tag, so a course authors real QTI:
-# qti-assessment-item/<url_name>.xml holds a <qti-assessment-item> element.
+# The entry point NAME is the OLX tag: <openedx-qti> carries the platform's
+# attributes and wraps an untouched <qti-assessment-item>.
 [project.entry-points."xblock.v1"]
-qti-assessment-item = "pyqti.xblock.block:QtiAssessmentItemBlock"
+openedx-qti = "pyqti.xblock.block:QtiAssessmentItemBlock"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -192,12 +192,20 @@ things possible that were previously ruled out.
 New with `pyqti/xblock/`. None of this is blocking for the demo or for library use.
 
 - **The block has never run in a real LMS.** Every test drives it through
-  `xblock.test.tools.TestRuntime`, which is not Studio and not the LMS. Unverified in
-  particular: whether edx-platform's OLX importer tolerates a **namespaced** root tag
-  when it resolves the block type (it may compare `node.tag` against the category
-  string, in which case `{ns}qti-assessment-item` would not match). Import and export
-  both accept either shape, so the fallback is to emit bare OLX --- a one-line change
-  to `add_xml_to_node` --- but which shape is correct is currently a guess.
+  `xblock.test.tools.TestRuntime`, which is not Studio and not the LMS. The OLX
+  layout (a `<openedx-qti url_name="..."/>` pointer, the definition in
+  `openedx-qti/{url_name}.xml`) was written against edx-platform's export and import
+  code, not observed in a real course export.
+- **Inline `<openedx-qti>` in a unit loses whitespace on course import.** The platform
+  parses its own files with `remove_blank_text=True`, which drops whitespace-only text
+  between inline elements (`<em>c</em> <strong>d</strong>` renders as "cd"). Course
+  export never writes that shape --- each block gets its own file, which pyqti parses
+  itself --- but hand-authored OLX that puts the item inline in a vertical hits it.
+- **OLX import is lenient in two places, deliberately.** Attributes on `<openedx-qti>`
+  that are not settings fields are ignored with a warning, as XBlock core does, so a
+  typo such as `max_atempts` imports without its limit. A pointer whose definition
+  file is missing imports as an empty block, with a warning, because the same shape
+  is a legitimate empty block in runtimes that have no course files.
 - **Score release is a flag, not a mechanism.** `show_score_immediately` gates whether
   outcomes come back in the handler response; the grade is published either way. There
   is no policy-gated release step. Check whether the platform's subsection
